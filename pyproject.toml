@@ -1,0 +1,24 @@
+[project]
+name = "spec-to-pr"
+version = "0.1.0"
+description = "Coding-agent harness that turns a spec into a tested draft pull request"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=2.6.0",
+    "typer>=0.27.3",
+]
+
+[project.scripts]
+spec-to-pr = "spec_to_pr.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
