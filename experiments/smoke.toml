@@ -1,0 +1,20 @@
+# Pipeline check for the experiment runner: every config, two model labels, one run, on the small
+# injection task set. Run it with the oracle agent (no API calls): it is part of scripts/check.py.
+name = "smoke"
+tasks = "tasks/injection"
+runs = 1
+workers = 4
+max_total_usd = 5.0
+
+configs = [
+  "configs/bare.toml",
+  "configs/verification.toml",
+  "configs/skills.toml",
+  "configs/planning.toml",
+  "configs/context.toml",
+]
+
+models = [
+  "claude-haiku-5-5",
+  "claude-opus-5-5",
+]

@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIGS = ["bare", "verification", "skills", "planning", "context"]
-COMMANDS = ["solve", "run", "eval", "validate-tasks", "build-image"]
+COMMANDS = ["solve", "run", "eval", "experiment", "validate-tasks", "build-image"]
 
 
 def docker_ready() -> bool:
@@ -66,7 +66,7 @@ def main() -> int:
         results.append(("test suite", "SKIP", "--fast"))
     else:
         t0 = time.monotonic()
-        proc = run(["uv", "run", "--extra", "tracing", "pytest", "-q"])
+        proc = run(["uv", "run", "--extra", "tracing", "--extra", "report", "pytest", "-q"])
         summary = (proc.stdout.strip().splitlines() or ["(no output)"])[-1]
         record("test suite", proc.returncode == 0, summary, t0)
 
@@ -94,6 +94,23 @@ def main() -> int:
     sb = eval_scoreboard("tasks/self", "bare", "noop", tmp / "noop")
     ok = bool(sb) and sb["resolved"] == 0 and sb["task_runs"] == 10
     record("noop eval resolves nothing", ok, f"{sb['resolved']}/{sb['task_runs']} resolved" if sb else "eval failed", t0)
+
+    t0 = time.monotonic()
+    out = tmp / "experiment"
+    proc = run(["uv", "run", "spec-to-pr", "experiment", "experiments/smoke.toml", "--agent", "oracle",
+                "--sandbox", SANDBOX, "--out", str(out)])
+    results_file = out / "experiment-smoke-oracle" / "results.json"
+    ok, detail = False, "experiment failed"
+    if proc.returncode == 0 and results_file.exists():
+        cells = json.loads(results_file.read_text(encoding="utf-8"))["cells"]
+        report_dir = results_file.parent
+        charts = all((report_dir / f).exists() for f in ("report.md", "ablation.png", "cost_quality.png"))
+        ok = len(cells) == 10 and all(c["resolve_rate_mean"] == 1.0 for c in cells) and charts
+        detail = f"{sum(c['resolve_rate_mean'] == 1.0 for c in cells)}/{len(cells)} cells at 100%, " \
+                 f"report and charts {'written' if charts else 'MISSING'}"
+    else:
+        print(proc.stdout[-2000:], proc.stderr[-2000:])
+    record("experiment smoke (5 configs × 2 models)", ok, detail, t0)
 
     t0 = time.monotonic()
     missing = [c for c in COMMANDS if run(["uv", "run", "spec-to-pr", c, "--help"]).returncode != 0]

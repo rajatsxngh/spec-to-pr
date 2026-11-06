@@ -1,0 +1,24 @@
+# The milestone 7 experiment: every ablation rung × three models × 3 runs on the self-written tasks.
+# Worst case (every task run spends its full $2 budget): 5 configs × 3 models × 3 runs × 10 tasks
+# = 450 task runs, $900. The cap below stops the experiment well before that; raise it deliberately.
+name = "full"
+tasks = "tasks/self"
+runs = 3
+workers = 4
+max_total_usd = 150.0
+
+# Ladder order: each rung adds one component to the rung before it.
+configs = [
+  "configs/bare.toml",
+  "configs/verification.toml",
+  "configs/skills.toml",
+  "configs/planning.toml",
+  "configs/context.toml",
+]
+
+# Cheap to frontier. Which models to compare is still an open question in the PRD.
+models = [
+  "claude-haiku-5-5",
+  "claude-sonnet-5-5",
+  "claude-opus-5-5",
+]

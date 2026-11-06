@@ -1,4 +1,4 @@
-.PHONY: test check validate eval smoke oracle image ablate injection
+.PHONY: test check validate eval smoke oracle image ablate injection estimate experiment
 
 test:
 	uv run pytest
@@ -31,6 +31,14 @@ ablate:
 	uv run spec-to-pr eval tasks/self --config configs/skills.toml --runs 3
 	uv run spec-to-pr eval tasks/self --config configs/planning.toml --runs 3
 	uv run spec-to-pr eval tasks/self --config configs/context.toml --runs 3
+
+# The milestone 7 experiment: every config × model × run, then report.md and charts. Spends real money
+# (capped in experiments/full.toml); check the estimate first with `make estimate`.
+estimate:
+	uv run spec-to-pr experiment experiments/full.toml --estimate-only
+
+experiment:
+	uv run --extra report spec-to-pr experiment experiments/full.toml --yes
 
 # Pipeline check with the reference solutions; no API calls.
 oracle:

@@ -18,6 +18,21 @@ Eval configs switch components per ablation rung: `configs/bare.toml`, `configs/
 `configs/skills.toml`, `configs/planning.toml`, `configs/context.toml` (the full harness).
 `make ablate` runs them all; plans are auto-approved in evals.
 
+## Experiment
+
+```bash
+uv run spec-to-pr experiment experiments/full.toml --estimate-only   # size and worst-case cost
+uv run --extra report spec-to-pr experiment experiments/full.toml --yes
+```
+
+`experiments/full.toml` runs every ablation config (bare, +verification, +skills, +planning,
++context) with three models (Haiku 5.5, Sonnet 5.5, Opus 5.5), 3 runs each, on `tasks/self`:
+450 task runs, $900 worst case, stopped by a $150 cap. Each config × model cell is its own eval
+under `results/experiment-full-claude/cells/`; finished cells are skipped on rerun, so an
+interrupted experiment resumes, and the cap holds across cells. The run ends with `report.md` (the
+ablation table with changes from the previous rung), `ablation.png` (resolve rate by rung, one line
+per model, spread across runs) and `cost_quality.png` (cost per resolved task against resolve rate).
+
 ## Checks
 
 ```bash
@@ -128,6 +143,7 @@ only when Docker and the sandbox image are available.
 | `skills.py`, `skills/` | On-demand skills and `AGENTS.md` loading | F8 |
 | `prflow.py`, `github.py` | Spec-to-draft-PR flow and GitHub REST client | F10 |
 | `context.py` | Tree-sitter repo map, compaction | F5, F6 |
+| `experiment.py`, `report.py` | Config × model × run matrix, ablation table and charts | M7 |
 | `scripts/check.py` | Integration checks across all components and configs | |
 | `planning.py` | plan.md, approval gate, plan-phase edit lock | F4 |
 | `safety.py` | Command denylist and secret scrubbing | N1 |

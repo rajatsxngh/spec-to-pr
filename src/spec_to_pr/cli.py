@@ -246,6 +246,66 @@ def eval_cmd(
     typer.echo(f"Results: {out_dir}")
 
 
+@app.command("experiment")
+def experiment_cmd(
+    spec_file: Path = typer.Argument(Path("experiments/full.toml"), exists=True, dir_okay=False),
+    agent: str = typer.Option("claude", help="claude, or oracle to check the pipeline without API calls."),
+    estimate_only: bool = typer.Option(False, "--estimate-only", help="Print the size and worst-case cost, then stop."),
+    yes: bool = typer.Option(False, "--yes", help="Confirm spending up to the spec's cap (required for claude)."),
+    sandbox: str = typer.Option("docker"),
+    image: str = typer.Option(DEFAULT_IMAGE),
+    out: Path = typer.Option(Path("results")),
+) -> None:
+    """Run every config × model × run in a spec, resuming finished cells, then write the report and charts."""
+    from .evaluate import oracle_for
+    from .experiment import SpecError, estimate, load_spec, run_experiment
+    from .report import write_report
+
+    try:
+        spec = load_spec(spec_file)
+    except SpecError as e:
+        raise typer.BadParameter(str(e)) from None
+    est = estimate(spec)
+    typer.echo(f"Experiment {spec.name}: {est['cells']} cells ({len(spec.configs)} configs × {len(spec.models)} models), "
+               f"{est['tasks']} tasks × {spec.runs} runs = {est['task_runs']} task runs.")
+    typer.echo(f"Worst case ${est['worst_case_usd']:.2f} if every run spends its full budget; "
+               f"the spend cap stops it at ${spec.max_total_usd:.2f}.")
+    if estimate_only:
+        return
+    if agent == "claude":
+        for m in spec.models:
+            try:
+                price_for(m)
+            except KeyError as e:
+                raise typer.BadParameter(str(e.args[0]), param_hint="models") from None
+        if not yes:
+            raise typer.BadParameter(f"This spends real money (up to ${spec.max_total_usd:.2f}); pass --yes to confirm.")
+        make_model = lambda cfg: (lambda task: AnthropicModel(cfg.run.model))  # noqa: E731
+        reserve = None
+    elif agent == "oracle":
+        make_model, reserve = oracle_for, 0.0
+    else:
+        raise typer.BadParameter("--agent must be claude or oracle")
+
+    out_dir = out / f"experiment-{spec.name}-{agent}"
+
+    def progress(cfg, sb, cached):
+        state = "cached" if cached else "done"
+        typer.echo(f"  [{state}] {cfg.name} × {cfg.run.model.model}: {sb['resolve_rate_mean']:.0%} resolved, "
+                   f"${sb['total_cost_usd']:.2f}" + (f", {sb['skipped']} skipped by the cap" if sb["skipped"] else ""))
+
+    boards = run_experiment(spec, make_model, _sandbox_factory(sandbox, image, SandboxLimits()), out_dir,
+                            reserve_per_task=reserve, on_cell=progress)
+    files = write_report(boards, [load_config_name(c) for c in spec.configs], spec.models, out_dir, spec.name)
+    typer.echo(f"Total ${sum(b['total_cost_usd'] for b in boards):.2f}. Report: " + ", ".join(str(f) for f in files))
+
+
+def load_config_name(path: Path) -> str:
+    from .evaluate import load_config
+
+    return load_config(path).name
+
+
 @app.command("validate-tasks")
 def validate_tasks(
     tasks: Path = typer.Argument(Path("tasks/self"), exists=True, file_okay=False),
