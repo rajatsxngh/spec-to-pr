@@ -161,6 +161,52 @@ def cost_quality_chart(boards: list[dict], configs: list[str], models: list[str]
     plt.close(fig)
 
 
+def headline(boards: list[dict], configs: list[str], models: list[str]) -> dict:
+    """The numbers the README and posts lead with: which component helped most, and bare vs full."""
+    by = {(b["config"], b["model"]): b for b in boards}
+    gains: dict[str, list[float]] = {}
+    for m in models:
+        for prev, cur in zip(configs, configs[1:]):
+            if (prev, m) in by and (cur, m) in by:
+                gains.setdefault(cur, []).append(by[(cur, m)]["resolve_rate_mean"] - by[(prev, m)]["resolve_rate_mean"])
+    best = max(gains, key=lambda c: sum(gains[c]) / len(gains[c])) if gains else None
+    per_model = {}
+    for m in models:
+        first, last = by.get((configs[0], m)), by.get((configs[-1], m))
+        if first and last:
+            per_model[m] = {"bare": first["resolve_rate_mean"], "full": last["resolve_rate_mean"],
+                            "bare_cpr": first["cost_per_resolved_usd"], "full_cpr": last["cost_per_resolved_usd"]}
+    return {"best_component": best, "best_gain_pts": round(100 * sum(gains[best]) / len(gains[best]), 1) if best else None,
+            "per_model": per_model}
+
+
+def readme_results(boards: list[dict], configs: list[str], models: list[str], chart_dir: str) -> str:
+    """Markdown for the README results section: headline, compact table, charts."""
+    by = {(b["config"], b["model"]): b for b in boards}
+    h = headline(boards, configs, models)
+    lines = []
+    if h["best_component"]:
+        lines.append(f"**{_rung(h['best_component']).lstrip('+ ')}** was the most valuable component: "
+                     f"{h['best_gain_pts']:+.1f} points of resolve rate on average across models.")
+        lines.append("")
+    for m, v in h["per_model"].items():
+        lines.append(f"- {m}: {_pct(v['bare'])} → {_pct(v['full'])} resolved, bare loop to full harness; "
+                     f"cost per resolved task {_usd(v['bare_cpr'])} → {_usd(v['full_cpr'])}.")
+    lines += ["", "| Rung | " + " | ".join(models) + " |", "| --- | " + " | ".join("---" for _ in models) + " |"]
+    for c in configs:
+        cells = []
+        for m in models:
+            b = by.get((c, m))
+            cells.append(f"{_pct(b['resolve_rate_mean'])} · {_usd(b['cost_per_resolved_usd'])}" if b else "not run")
+        lines.append(f"| {_rung(c)} | " + " | ".join(cells) + " |")
+    runs = max((b.get("runs", 0) for b in boards), default=0)
+    tsets = sorted({f"{b['taskset']['name']} {b['taskset']['version']}" for b in boards})
+    lines += ["", f"Each cell: resolve rate · cost per resolved task, mean of {runs} run(s) on {', '.join(tsets)}.", "",
+              f"![Resolve rate by rung]({chart_dir}/ablation.png)", "",
+              f"![Cost versus quality]({chart_dir}/cost_quality.png)"]
+    return "\n".join(lines)
+
+
 def write_report(boards: list[dict], configs: list[str], models: list[str], out: Path, title: str) -> list[Path]:
     """Write report.md and, when matplotlib is installed, the two charts. Returns the files written."""
     written = []

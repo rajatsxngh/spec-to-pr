@@ -1,152 +1,176 @@
 # Spec-to-PR
 
-An open-source coding-agent harness that turns a written spec into a tested draft pull request.
-This repository is at **milestone 6 (context engineering)**; every harness component is built:
+**A coding-agent harness that turns a written spec or GitHub issue into a tested draft pull request,
+and measures which parts of the harness actually earn their cost.**
 
-- **M1:** a sandboxed agent loop with five tools, JSONL trajectory logging and per-task budgets.
-- **M2:** a task set with hidden tests, a parallel eval runner with a hard spend cap, and a scoreboard.
-- **M3:** test-first editing, a finish gate that proves the new test reproduces the issue, a
-  fresh-context reviewer, a test-weakening detector, and on-demand skills plus `AGENTS.md`.
-- **M4:** `spec-to-pr run SPEC` opens a draft PR; a dangerous-command denylist and secret scrubbing;
-  a prompt-injection task set; OpenTelemetry tracing.
-- **M5:** `plan.md` with an approve / edit / reject gate before any edit; GitHub issue URLs as specs;
-  the plan in the PR description.
-- **M6:** a tree-sitter repo map in the first message, tighter output trimming, and compaction that
-  restarts from the spec, plan, repo map, a summary and the current diff near the token budget.
-
-Eval configs switch components per ablation rung: `configs/bare.toml`, `configs/verification.toml`,
-`configs/skills.toml`, `configs/planning.toml`, `configs/context.toml` (the full harness).
-`make ablate` runs them all; plans are auto-approved in evals.
-
-## Experiment
-
-```bash
-uv run spec-to-pr experiment experiments/full.toml --estimate-only   # size and worst-case cost
-uv run --extra report spec-to-pr experiment experiments/full.toml --yes
+```
+spec or issue → plan (you approve) → failing test → fix in a sandbox → tests pass → fresh-eyes review → draft PR
 ```
 
-`experiments/full.toml` runs every ablation config (bare, +verification, +skills, +planning,
-+context) with three models (Haiku 5.5, Sonnet 5.5, Opus 5.5), 3 runs each, on `tasks/self`:
-450 task runs, $900 worst case, stopped by a $150 cap. Each config × model cell is its own eval
-under `results/experiment-full-claude/cells/`; finished cells are skipped on rerun, so an
-interrupted experiment resumes, and the cap holds across cells. The run ends with `report.md` (the
-ablation table with changes from the previous rung), `ablation.png` (resolve rate by rung, one line
-per model, spread across runs) and `cost_quality.png` (cost per resolved task against resolve rate).
+Every PR is a draft for human review and is never merged automatically. Each one carries the spec, the
+approved plan, a diff summary, proof that the new test fails without the fix and passes with it, the
+reviewer's verdict, integrity flags and the cost.
+
+<!-- Demo GIF: record with docs/demo.tape (see docs/demo.md), save as docs/img/demo.gif, then embed it here. -->
+
+## Results
+
+<!-- results:start -->
+_No experiment results yet. Run `make experiment` (Docker and a Claude API key needed; capped at $150), then
+`uv run --extra report python scripts/update_readme.py results/experiment-full-claude` to fill this section
+with the ablation table and charts._
+<!-- results:end -->
+
+The experiment turns each harness component on one at a time (the ablation ladder below) for three models,
+three runs each, on a self-written task set with hidden tests, and reports resolve rate and cost per resolved
+task at every rung.
+
+| Rung | Adds |
+| --- | --- |
+| Bare loop | Agent loop, sandbox, five tools, logging, budgets |
+| + Verification | Test-first editing, finish gate, fresh-context reviewer |
+| + Skills | On-demand instruction packs, the repo's `AGENTS.md` |
+| + Planning | `plan.md` before any edit (auto-approved in evals) |
+| + Context | Tree-sitter repo map, output trimming, compaction (the full harness) |
+
+## How a run works
+
+```mermaid
+flowchart TD
+    A[Spec file or GitHub issue] --> B[Agent explores, drafts plan.md]
+    B --> C{You: approve, edit or reject}
+    C -- reject --> X[Run ends, no PR]
+    C -- approve or edit --> D[Write a failing test]
+    subgraph S[Docker sandbox: no network, no secrets]
+        D --> E[Implement the fix]
+        E --> F{Finish gate: test fails without the fix and passes with it?}
+        F -- no --> E
+    end
+    F -- yes --> G[Reviewer with fresh context checks the diff]
+    G -- changes requested, once --> E
+    G -- approve --> H[Commit in a temp worktree, push, open a draft PR]
+```
+
+- **Plan first.** Edits are locked until `plan.md` (files to change, steps, tests to add, acceptance
+  criteria) is approved. Anything touched while planning is reverted.
+- **Test first.** Source files can't be edited until a test changes. At `finish`, the harness stashes the
+  source changes and runs the tests: they must fail without the fix and pass with it.
+- **No weakened tests.** A detector flags deleted tests, removed asserts and new skip markers on every run.
+- **Fresh-eyes review.** A separate model call sees only the task, the diff and the test results.
+- **Context engineering.** A repo map in the first message, tighter output trimming, and compaction that
+  restarts from the spec, plan, repo map, a summary and the current diff, never by editing history.
+- **Safety.** A Docker sandbox with no network and no host environment, a dangerous-command denylist,
+  planted-instruction tests, and the GitHub token kept on the host.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    CLI[CLI: run, solve, eval, experiment] --> O[Orchestrator: plan, implement, verify, review, PR]
+    O --> L[Agent loop: budgets, compaction]
+    L --> T[Tool layer: run, read_file, edit_file, search, finish, denylist]
+    T --> SB[(Docker sandbox)]
+    L --> M[Model adapter: Anthropic SDK]
+    L --> TR[Tracing: OpenTelemetry]
+    O --> GH[GitHub: issues, push, draft PR]
+    EV[Eval runner and experiment] --> O
+```
+
+## Quick start
+
+```bash
+uv sync --extra report --extra tracing
+uv run spec-to-pr build-image                     # Docker sandbox image, once
+export ANTHROPIC_API_KEY=...                      # or: ant auth login
+gh auth login                                     # or: export GH_TOKEN=...
+
+uv run spec-to-pr run spec.md --repo path/to/repo                         # draft PR
+uv run spec-to-pr run https://github.com/OWNER/REPO/issues/12 --repo path/to/repo
+uv run spec-to-pr run spec.md --repo path/to/repo --dry-run               # local branch only
+uv run spec-to-pr run spec.md --repo path/to/fork-checkout --fork         # repos you can't push to
+```
+
+The repo must be clean and have a GitHub `origin`. The patch is committed on a new `spec-to-pr/...` branch
+in a temporary worktree, so your working tree is never touched. `--fork` pushes to your fork and opens the
+PR against `origin`. `--auto-approve` skips the plan prompt; `--no-planning` skips planning.
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `spec-to-pr run SPEC` | Spec or issue to draft PR, with every component on |
+| `spec-to-pr solve REPO --task ...` | One task in the sandbox, writes a report and patch, no PR |
+| `spec-to-pr eval TASKS --config ...` | Parallel eval with hidden tests, a strict spend cap and a scoreboard |
+| `spec-to-pr experiment SPEC` | Every config × model × run, resumable, then the report and charts |
+| `spec-to-pr validate-tasks TASKS` | Each task fails on the original code and passes with its reference fix |
+| `spec-to-pr build-image` | Builds the sandbox image |
+
+Every run writes `runs/<timestamp>/` with `trajectory.jsonl` (every model and tool call with tokens and
+cost), `report.md`, `report.json`, `patch.diff`, and `plan.md` / `pr.md` when they apply.
+
+## Evals
+
+- **Tasks:** `tasks/self/` (`self-v1`): 10 self-written Python tasks. Each has `repo/` (what the agent
+  sees), `hidden/` (tests copied in only after the run, restoring the original visible tests so weakened
+  tests don't count) and `solution/` (reference fix for validation).
+- **Prompt injection:** `tasks/injection/` (`inj-v1`): planted instructions in a README, a code comment and
+  the issue text. A task counts as resolved only if the planted instruction was ignored.
+- **Spend cap:** strict. A task starts only if the money spent plus the per-task budget of every running
+  task still fits; an experiment holds one cap across all its cells.
+- **Make targets:** `make eval`, `make smoke` (CI's 5-task eval), `make ablate`, `make injection`,
+  `make estimate`, `make experiment`.
 
 ## Checks
 
 ```bash
-uv run python scripts/check.py         # everything (about 10 minutes)
-uv run python scripts/check.py --fast  # skip the test suite
+uv run python scripts/check.py          # everything (about 12 minutes), no API calls
 ```
 
-Runs the test suite, validates every task set, runs the oracle agent through the CLI with every
-ablation config (each must resolve 100% with no harness errors or test-weakening flags), runs the
-injection set with the full harness (no planted instruction followed), checks that a no-op agent
-resolves nothing, and loads every CLI command. No API calls. Run it after every milestone.
-
-## Setup
-
-```bash
-uv sync
-```
-
-Running the agent for real needs:
-
-- **Docker** (Docker Desktop on Windows/macOS) for the isolated sandbox. Then build the image once:
-  `uv run spec-to-pr build-image`
-- **Claude API credentials**: `ANTHROPIC_API_KEY`, or a profile from `ant auth login`.
-
-## Spec to draft PR
-
-```bash
-uv run spec-to-pr run spec.md --repo path/to/repo            # opens a draft PR
-uv run spec-to-pr run spec.md --repo path/to/repo --dry-run  # stops at a local branch
-uv run spec-to-pr run https://github.com/OWNER/REPO/issues/12 --repo path/to/repo
-```
-
-The agent first explores and drafts `plan.md` (files to change, steps, tests to add, acceptance
-criteria). You approve it, edit it in `$EDITOR`, or reject it, which ends the run with no PR.
-`--auto-approve` skips the prompt; `--no-planning` skips planning. A PR made from an issue says
-`Closes #12`.
-
-The repo must be clean and have a GitHub `origin`. The agent works in the sandbox with verification
-and skills on; the patch is committed on a new `spec-to-pr/...` branch in a temporary worktree (your
-working tree is not touched), pushed with your normal git credentials, and opened as a **draft** PR
-whose description has the spec, diff summary, test results, review verdict, integrity flags and cost.
-The GitHub token comes from `GH_TOKEN`/`GITHUB_TOKEN` or `gh auth token` and stays on the host.
+Runs the test suite, validates every task set, runs an oracle agent through the CLI with every ablation
+config (each must resolve 100%), runs the injection set with the full harness, checks that a no-op agent
+resolves nothing, runs the experiment pipeline end to end, and loads every CLI command. CI runs it in
+Docker on every push.
 
 ## Tracing
 
-`uv sync --extra tracing`, then set `OTEL_EXPORTER_OTLP_ENDPOINT` (and `OTEL_EXPORTER_OTLP_HEADERS`
-for Langfuse). Each run exports a `spec_to_pr.run` span with `chat` and `execute_tool` children
-carrying `gen_ai.*` token counts and `spec_to_pr.cost_usd`. Works with Langfuse, Phoenix or any OTLP
-backend.
+`uv sync --extra tracing`, then set `OTEL_EXPORTER_OTLP_ENDPOINT` (and `OTEL_EXPORTER_OTLP_HEADERS` for
+Langfuse). Each run exports a `spec_to_pr.run` span with `chat` and `execute_tool` children carrying
+`gen_ai.*` token counts and `spec_to_pr.cost_usd`. Works with Langfuse, Phoenix or any OTLP backend.
 
-## Run one task
+## What I'd change for production
 
-```bash
-uv run spec-to-pr solve examples/planted_bug --task-file examples/planted_bug/TASK.md
-```
-
-Each run writes `runs/<timestamp>/` with `trajectory.jsonl` (every model call and tool call, with
-tokens and cost), `report.md`, `report.json` and `patch.diff`.
-
-Useful flags: `--model`, `--effort`, `--max-steps`, `--max-tokens`, `--max-usd`, `--max-minutes`,
-`--no-fallback` (pin one model, for evals), `--sandbox local` (no isolation; development only).
-
-## Eval
-
-```bash
-make eval      # 3 runs of every task with configs/bare.toml, $20 cap by default
-make smoke     # first 5 tasks, $5 cap (what CI runs on every PR)
-make oracle    # applies each task's reference fix: checks the pipeline with no API calls
-make validate  # every task fails on the original code and passes with its reference fix
-```
-
-Without `make`, call `uv run spec-to-pr eval ...` directly (see the Makefile). Each eval writes
-`results/<stamp>-<config>-<agent>/` with `results.jsonl`, `scoreboard.md`, `scoreboard.json` and
-every trajectory under `runs/`.
-
-- **Task set:** `tasks/self/` (version `self-v1`): 10 self-written Python tasks. Each has `repo/`
-  (what the agent sees), `hidden/` (tests copied in only after the agent finishes, plus the original
-  visible tests so weakened tests don't count), and `solution/` (reference fix for validation).
-- **Spend cap:** `--max-total-usd` is strict. A task starts only if the money spent so far plus the
-  per-task `max_usd` of every running task still fits.
-- **Configs:** `configs/*.toml` set the model, budgets and which harness components are on. Turning
-  on a component before its milestone is an error.
-
-## Test
-
-```bash
-uv run pytest
-```
-
-The tests use a scripted model and a local sandbox, so they need no API key. The Docker tests run
-only when Docker and the sandbox image are available.
+- **Isolation:** microVMs (Firecracker or gVisor) instead of plain containers, and a per-task egress
+  allowlist so dependency installs work without opening the network.
+- **Credentials:** a GitHub App with short-lived installation tokens instead of a user token, scoped per repo.
+- **Untrusted input:** require human approval for any PR to a repo you don't own, and flag issue text that
+  addresses the agent, before the plan stage.
+- **Evals:** a larger fresh task set (SWE-bench Live import), hidden tests run in a separate container, and
+  bootstrap confidence intervals instead of min-max spread.
+- **Test-weakening detector:** AST-based instead of diff rules, so renamed or rewritten asserts are caught.
+- **Cost:** verified prompt-cache hit rates, the Batch API for evals, and per-team budgets with alerts.
+- **Languages:** tree-sitter grammars and test-command discovery beyond Python.
 
 ## Layout
 
-| Module | What it does | PRD |
-| --- | --- | --- |
-| `sandbox.py` | Docker sandbox (network off, limits, no host env) and a local dev sandbox | F2 |
-| `models.py` | Model adapter over the Anthropic SDK, plus a scripted model for tests | F11 |
-| `tools.py` | `run`, `read_file`, `edit_file`, `search`, `finish` | F1 |
-| `agent.py` | The agent loop, append-only history, reports | F1 |
-| `trajectory.py` | JSONL logging | F3 |
-| `budget.py` | Step, token, dollar and time caps | F9 |
-| `pricing.py` | Per-model prices and cost per call | F3, F9 |
-| `tasks.py` | Task format, hidden-test grading, task validation | F12, N5 |
-| `evaluate.py` | Parallel runner, spend cap, scoreboard, ablation configs | F12 |
-| `verification.py` | Test-first gate, finish gate, test-weakening detector | F7, N2 |
-| `review.py` | Fresh-context reviewer subagent | F7 |
-| `skills.py`, `skills/` | On-demand skills and `AGENTS.md` loading | F8 |
-| `prflow.py`, `github.py` | Spec-to-draft-PR flow and GitHub REST client | F10 |
-| `context.py` | Tree-sitter repo map, compaction | F5, F6 |
-| `experiment.py`, `report.py` | Config × model × run matrix, ablation table and charts | M7 |
-| `scripts/check.py` | Integration checks across all components and configs | |
-| `planning.py` | plan.md, approval gate, plan-phase edit lock | F4 |
-| `safety.py` | Command denylist and secret scrubbing | N1 |
-| `tracing.py` | OpenTelemetry spans | N4 |
-| `tasks/injection/` | Planted-instruction tasks with integrity checks | N3 |
-| `.github/workflows/ci.yml` | Tests, task validation, oracle eval, 5-task smoke eval | N6 |
+| Path | What it does |
+| --- | --- |
+| `src/spec_to_pr/agent.py` | Agent loop, append-only history, reports |
+| `sandbox.py`, `safety.py` | Docker and local sandboxes; denylist and secret scrubbing |
+| `models.py`, `pricing.py` | Anthropic SDK adapter, scripted model for tests; cost per call |
+| `tools.py`, `budget.py`, `trajectory.py` | Agent tools; step, token, dollar and time caps; JSONL log |
+| `planning.py` | `plan.md`, approval gate, plan-phase edit lock |
+| `verification.py`, `review.py` | Test-first and finish gates, test-weakening detector; reviewer |
+| `skills.py`, `skills/` | On-demand skills and `AGENTS.md` |
+| `context.py` | Tree-sitter repo map, compaction |
+| `prflow.py`, `github.py` | Spec to draft PR, issue intake, fork flow, GitHub REST client |
+| `tasks.py`, `evaluate.py` | Task format and grading; parallel eval runner, scoreboard, configs |
+| `experiment.py`, `report.py` | Config × model × run matrix; ablation table and charts |
+| `tracing.py` | OpenTelemetry spans |
+| `tasks/`, `configs/`, `experiments/` | Task sets, ablation configs, experiment specs |
+| `scripts/check.py`, `scripts/update_readme.py` | Integration checks; README results from an experiment |
+| `docs/` | Launch posts, demo script, dogfood guide |
+
+## Status
+
+All eight milestones are built and pass the integration checks with scripted models. Not done yet: the
+real experiment run, the demo recording and the dogfood PRs. The license is still to be chosen.

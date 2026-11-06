@@ -110,7 +110,27 @@ def main() -> int:
                  f"report and charts {'written' if charts else 'MISSING'}"
     else:
         print(proc.stdout[-2000:], proc.stderr[-2000:])
-    record("experiment smoke (5 configs × 2 models)", ok, detail, t0)
+    record("experiment smoke (5 configs x 2 models)", ok, detail, t0)
+
+    # The experiment's output feeds the README updater (run on a copy of the README).
+    t0 = time.monotonic()
+    ok, detail = False, "no experiment output"
+    if results_file.exists():
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("update_readme", ROOT / "scripts" / "update_readme.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        readme = tmp / "README.md"
+        readme.write_text((ROOT / "README.md").read_text(encoding="utf-8"), encoding="utf-8")
+        try:
+            mod.update(results_file.parent, readme, tmp / "docs" / "img", allow_oracle=True)
+            text = readme.read_text(encoding="utf-8")
+            ok = "| + Context |" in text and (tmp / "docs" / "img" / "ablation.png").exists()
+            detail = "results section and charts written" if ok else "results section incomplete"
+        except SystemExit as e:
+            detail = f"updater failed: {e}"
+    record("README results from experiment", ok, detail, t0)
 
     t0 = time.monotonic()
     missing = [c for c in COMMANDS if run(["uv", "run", "spec-to-pr", c, "--help"]).returncode != 0]

@@ -60,9 +60,16 @@ class Issue:
     author: str
 
 
+@dataclass
+class Fork:
+    owner: str  # the account that owns the fork
+    push_url: str
+
+
 class GitHubClient(Protocol):
     def create_draft_pr(self, owner: str, repo: str, head: str, base: str, title: str, body: str) -> str: ...
     def get_issue(self, owner: str, repo: str, number: int) -> Issue: ...
+    def ensure_fork(self, owner: str, repo: str) -> Fork: ...
 
 
 class RestGitHub:
@@ -96,6 +103,17 @@ class RestGitHub:
             raise GitHubError(f"#{number} is a pull request, not an issue")
         return Issue(number, data["title"], data.get("body") or "", data["html_url"], data["user"]["login"])
 
+    def ensure_fork(self, owner: str, repo: str) -> Fork:
+        """Fork owner/repo into the token's account (a no-op if the fork exists) and return it.
+
+        Needs a token allowed to create forks and open PRs on the upstream repo, such as `gh auth token`
+        or a classic token with public_repo; fine-grained tokens only reach repos you own."""
+        resp = self._client.post(f"/repos/{owner}/{repo}/forks", json={"default_branch_only": True})
+        if resp.status_code >= 400:
+            raise GitHubError(f"Could not fork {owner}/{repo} ({resp.status_code}): {resp.text[:300]}")
+        data = resp.json()
+        return Fork(owner=data["owner"]["login"], push_url=data["clone_url"])
+
 
 @dataclass
 class FakeGitHub:
@@ -103,6 +121,12 @@ class FakeGitHub:
 
     calls: list[dict] = field(default_factory=list)
     issues: dict[int, Issue] = field(default_factory=dict)
+    fork: Fork | None = None  # what ensure_fork returns
+
+    def ensure_fork(self, owner: str, repo: str) -> Fork:
+        if self.fork is None:
+            raise GitHubError("FakeGitHub has no fork configured")
+        return self.fork
 
     def get_issue(self, owner: str, repo: str, number: int) -> Issue:
         if number not in self.issues:

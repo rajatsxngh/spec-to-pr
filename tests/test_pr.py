@@ -89,6 +89,32 @@ def test_spec_to_draft_pr(repo, tmp_path):
     assert outcome.body_path.read_text().startswith("# Fix median")
 
 
+def test_fork_flow_pushes_to_fork_and_targets_origin(repo, tmp_path):
+    from spec_to_pr.github import Fork
+
+    work, upstream = repo
+    fork_remote = tmp_path / "fork.git"
+    git(tmp_path, "init", "-q", "--bare", str(fork_remote))
+    gh = FakeGitHub(fork=Fork(owner="me", push_url=str(fork_remote)))
+    outcome = run_spec(SPEC, work, CONFIG, fixing_model(), local, gh, tmp_path / "run", fork=True)
+
+    assert outcome.status == "pr_opened", outcome.reason
+    call = gh.calls[0]
+    assert (call["owner"], call["repo"], call["base"]) == ("acme", "demo", "main")  # PR against upstream
+    assert call["head"] == f"me:{outcome.branch}"  # from the fork
+    assert "ordered[mid - 1]" in git(fork_remote, "show", f"{outcome.branch}:stats.py")
+    assert outcome.branch not in git(upstream, "branch", "--list")  # nothing pushed upstream
+
+
+def test_rest_ensure_fork():
+    def handler(request):
+        assert request.method == "POST" and request.url.path == "/repos/acme/demo/forks"
+        return httpx.Response(202, json={"owner": {"login": "me"}, "clone_url": "https://github.com/me/demo.git"})
+
+    fork = RestGitHub("t", transport=httpx.MockTransport(handler)).ensure_fork("acme", "demo")
+    assert (fork.owner, fork.push_url) == ("me", "https://github.com/me/demo.git")
+
+
 def test_dry_run_creates_local_branch_only(repo, tmp_path):
     work, remote = repo
     outcome = run_spec(SPEC, work, CONFIG, fixing_model(), local, None, tmp_path / "run")

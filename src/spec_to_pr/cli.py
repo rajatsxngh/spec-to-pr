@@ -83,6 +83,7 @@ def run_cmd(
     dry_run: bool = typer.Option(False, help="Stop at a local branch: no push, no PR."),
     planning: bool = typer.Option(True, help="Draft plan.md and wait for approval before editing (F4)."),
     auto_approve: bool = typer.Option(False, help="Approve the plan without asking (eval mode)."),
+    fork: bool = typer.Option(False, help="Push to your fork and open the PR against origin (repos you can't push to)."),
     sandbox: str = typer.Option("docker", help="docker (isolated) or local (unsafe, for development only)."),
     image: str = typer.Option(DEFAULT_IMAGE),
     model: str = typer.Option(ModelSettings.model),
@@ -144,7 +145,7 @@ def run_cmd(
     run_dir = out / time.strftime("%Y%m%d-%H%M%S")
     approver = auto_approver if auto_approve else _terminal_approver
     outcome = run_spec(spec_text, repo, config, AnthropicModel(config.model), make, github, run_dir,
-                       approver=approver, issue=issue)
+                       approver=approver, issue=issue, fork=fork)
     if outcome.result:
         b = outcome.result.budget
         typer.echo(f"agent: {outcome.result.status}; cost ${b['cost_usd']:.4f}, {b['steps']} steps, {b['elapsed_s']}s")
