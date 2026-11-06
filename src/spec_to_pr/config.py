@@ -45,3 +45,8 @@ class RunConfig:
     # Baseline cap on a single tool output sent back to the model. Smarter trimming
     # (keep head and tail, compaction) is F6, built in milestone 6.
     max_tool_output_chars: int = 20_000
+    # Harness components (ablation switches).
+    verification: bool = False  # F7: test-first, finish gate, reviewer
+    skills: bool = False  # F8: skills folder + AGENTS.md
+    skills_dir: str | None = None  # default: <repo>/skills
+    max_review_rounds: int = 1  # times the reviewer can send the agent back (open question in the PRD)

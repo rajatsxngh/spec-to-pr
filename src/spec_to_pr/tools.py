@@ -78,6 +78,43 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
 ]
 
 
+FINISH_VERIFIED = {
+    "name": "finish",
+    "description": (
+        "Call when the task is complete. The harness checks that your test fails without your source "
+        "change and passes with it; if a check can't be met, explain why in `explanation`."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string", "description": "What you changed and how you verified it."},
+            "test_command": {"type": "string", "description": "Command that runs the relevant tests."},
+            "explanation": {"type": "string", "description": "Only if a check can't be met: why."},
+        },
+        "required": ["summary", "test_command"],
+    },
+}
+
+LOAD_SKILL = {
+    "name": "load_skill",
+    "description": "Load the full instructions of one of the listed skills.",
+    "input_schema": {
+        "type": "object",
+        "properties": {"name": {"type": "string"}},
+        "required": ["name"],
+    },
+}
+
+
+def tool_schemas(verification: bool = False, skills: bool = False) -> list[dict[str, Any]]:
+    schemas = [s for s in TOOL_SCHEMAS if not (verification and s["name"] == "finish")]
+    if verification:
+        schemas.append(FINISH_VERIFIED)
+    if skills:
+        schemas.append(LOAD_SKILL)
+    return schemas
+
+
 @dataclass
 class ToolResult:
     output: str
@@ -99,10 +136,13 @@ def truncate(text: str, limit: int) -> str:
 
 
 class Toolbox:
-    def __init__(self, sandbox: Sandbox, default_timeout_s: int = 120, max_output_chars: int = 20_000):
+    def __init__(self, sandbox: Sandbox, default_timeout_s: int = 120, max_output_chars: int = 20_000,
+                 verifier: Any = None, skills: dict[str, Any] | None = None):
         self.sandbox = sandbox
         self.default_timeout_s = default_timeout_s
         self.max_output_chars = max_output_chars
+        self.verifier = verifier  # verification.Verifier when F7 is on
+        self.skills = skills  # name -> skills.Skill when F8 is on
 
     def call(self, name: str, args: dict[str, Any]) -> ToolResult:
         handler = getattr(self, f"_tool_{name}", None)
@@ -136,6 +176,10 @@ class Toolbox:
         return ToolResult(numbered or "(empty file)")
 
     def _tool_edit_file(self, path: str, old_str: str, new_str: str) -> ToolResult:
+        if self.verifier is not None:
+            refusal = self.verifier.allows_source_edit(path)
+            if refusal:
+                raise ToolError(refusal)
         if old_str == "":
             try:
                 self.sandbox.read_file(path)
@@ -166,5 +210,18 @@ class Toolbox:
             return ToolResult("No matches.")
         return ToolResult(r.output, is_error=r.exit_code not in (0, 1))
 
-    def _tool_finish(self, summary: str) -> ToolResult:
+    def _tool_finish(self, summary: str, test_command: str | None = None, explanation: str | None = None) -> ToolResult:
+        if self.verifier is None:
+            return ToolResult(summary, finished=True)
+        check = self.verifier.check_finish(test_command, explanation)
+        if not check.accepted:
+            return ToolResult(check.message, is_error=True)
         return ToolResult(summary, finished=True)
+
+    def _tool_load_skill(self, name: str) -> ToolResult:
+        if self.skills is None:
+            raise ToolError("Skills are not enabled")
+        skill = self.skills.get(name)
+        if skill is None:
+            raise ToolError(f"No skill named {name!r}; available: {', '.join(self.skills) or 'none'}")
+        return ToolResult(f"# Skill: {skill.name}\n\n{skill.body}")

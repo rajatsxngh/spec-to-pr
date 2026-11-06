@@ -31,6 +31,8 @@ def solve(
     model: str = typer.Option(ModelSettings.model, help="Claude model ID."),
     effort: str = typer.Option(ModelSettings.effort, help="low | medium | high | xhigh | max"),
     fallback: bool = typer.Option(True, help="Server-side refusal fallback to another model."),
+    verification: bool = typer.Option(True, help="Test-first, finish gate and reviewer (F7)."),
+    skills: bool = typer.Option(True, help="On-demand skills and AGENTS.md (F8)."),
     max_steps: int = typer.Option(Budget.max_steps),
     max_tokens: int = typer.Option(Budget.max_tokens),
     max_usd: float = typer.Option(Budget.max_usd),
@@ -50,6 +52,8 @@ def solve(
         budget=Budget(max_steps, max_tokens, max_usd, max_minutes * 60),
         sandbox=SandboxLimits(),
         model=ModelSettings(model=model, effort=effort, fallback=fallback),
+        verification=verification,
+        skills=skills,
     )
     if sandbox == "docker":
         box = DockerSandbox(repo, config.sandbox, image=image, commit=commit)

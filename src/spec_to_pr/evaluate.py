@@ -25,7 +25,7 @@ from .tasks import Task, TaskSet, grade
 
 # Harness components that ablation configs switch on and off, and the milestone that builds each.
 COMPONENTS = {"verification": 3, "skills": 3, "planning": 5, "context": 6}
-BUILT: set[str] = set()  # filled in as milestones land
+BUILT: set[str] = {"verification", "skills"}  # grows as milestones land
 
 
 class ConfigError(ValueError):
@@ -51,6 +51,9 @@ def load_config(path: Path) -> EvalConfig:
         budget=Budget(**raw.get("budget", {})),
         model=ModelSettings(**raw.get("model", {})),
         max_tool_output_chars=raw.get("max_tool_output_chars", RunConfig.max_tool_output_chars),
+        verification=components.get("verification", False),
+        skills=components.get("skills", False),
+        max_review_rounds=raw.get("max_review_rounds", RunConfig.max_review_rounds),
     )
     return EvalConfig(name=raw.get("name", path.stem), run=run, components=components)
 
@@ -67,6 +70,9 @@ class TaskRun:
     elapsed_s: float = 0.0
     models_used: list[str] = field(default_factory=list)
     detail: str = ""
+    weakening_flags: list[str] = field(default_factory=list)
+    verified: bool | None = None  # None when verification is off
+    review: str | None = None  # last reviewer verdict
 
 
 ModelFactory = Callable[[Task], ModelClient]
@@ -84,7 +90,9 @@ def run_one(task: Task, run_idx: int, config: EvalConfig, make_model: ModelFacto
         (run_dir / "grade.txt").write_text(g.output, encoding="utf-8")
         b = result.budget
         return TaskRun(task.id, run_idx, result.status, g.resolved, b["cost_usd"], b["steps"], b["tokens"],
-                       b["elapsed_s"], result.models_used, result.detail)
+                       b["elapsed_s"], result.models_used, result.detail, result.weakening_flags,
+                       (result.verification or {}).get("verified") if config.run.verification else None,
+                       result.reviews[-1]["verdict"] if result.reviews else None)
     except Exception as e:  # a broken task or sandbox must not stop the whole eval
         return TaskRun(task.id, run_idx, "harness_error", False, detail=f"{type(e).__name__}: {e}")
     finally:
@@ -186,6 +194,8 @@ def scoreboard(results: list[TaskRun], taskset: TaskSet, config: EvalConfig) -> 
         "mean_time_s": mean([r.elapsed_s for r in attempted]),
         "mean_steps": mean([r.steps for r in attempted]),
         "mean_tokens": mean([r.tokens for r in attempted]),
+        "test_weakening_flagged": sum(bool(r.weakening_flags) for r in attempted),
+        "flagged_but_resolved": sum(bool(r.weakening_flags) and r.resolved for r in attempted),
         "per_task": {
             tid: f"{sum(r.resolved for r in attempted if r.task_id == tid)}/{sum(r.task_id == tid for r in attempted)}"
             for tid in dict.fromkeys(r.task_id for r in results)
@@ -213,6 +223,7 @@ def scoreboard_markdown(sb: dict[str, Any]) -> str:
         f"| Mean time | {sb['mean_time_s']}s |",
         f"| Mean steps | {sb['mean_steps']} |",
         f"| Mean tokens | {sb['mean_tokens']:,.0f} |",
+        f"| Test-weakening flagged | {sb['test_weakening_flagged']} (resolved anyway: {sb['flagged_but_resolved']}) |",
         f"| Skipped (spend cap) | {sb['skipped']} |",
         f"| Harness errors | {sb['harness_errors']} |",
         "",

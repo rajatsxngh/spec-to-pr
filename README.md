@@ -1,9 +1,16 @@
 # Spec-to-PR
 
 An open-source coding-agent harness that turns a written spec into a tested draft pull request.
-This repository is at **milestone 2 (eval harness)**: a sandboxed agent loop with five tools,
-JSONL trajectory logging and per-task budgets (M1), plus a task set with hidden tests, a parallel
-eval runner with a hard spend cap, and a scoreboard (M2).
+This repository is at **milestone 3 (verification and skills)**:
+
+- **M1:** a sandboxed agent loop with five tools, JSONL trajectory logging and per-task budgets.
+- **M2:** a task set with hidden tests, a parallel eval runner with a hard spend cap, and a scoreboard.
+- **M3:** test-first editing, a finish gate that proves the new test reproduces the issue, a
+  fresh-context reviewer, a test-weakening detector, and on-demand skills plus `AGENTS.md`.
+
+`spec-to-pr solve` runs with verification and skills on (`--no-verification`, `--no-skills` to
+turn them off). Eval configs switch them per ablation rung: `configs/bare.toml`,
+`configs/verification.toml`, `configs/skills.toml` (`make ablate` runs all three).
 
 ## Setup
 
@@ -72,4 +79,7 @@ only when Docker and the sandbox image are available.
 | `pricing.py` | Per-model prices and cost per call | F3, F9 |
 | `tasks.py` | Task format, hidden-test grading, task validation | F12, N5 |
 | `evaluate.py` | Parallel runner, spend cap, scoreboard, ablation configs | F12 |
+| `verification.py` | Test-first gate, finish gate, test-weakening detector | F7, N2 |
+| `review.py` | Fresh-context reviewer subagent | F7 |
+| `skills.py`, `skills/` | On-demand skills and `AGENTS.md` loading | F8 |
 | `.github/workflows/ci.yml` | Tests, task validation, oracle eval, 5-task smoke eval | N6 |

@@ -133,9 +133,13 @@ class ScriptedModel:
         self._turns = list(turns)
         self._i = 0
         self.requests: list[list[dict[str, Any]]] = []
+        self.systems: list[str] = []
+        self.tool_names: list[list[str]] = []
 
     def complete(self, system: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> ModelResponse:
         self.requests.append(list(messages))
+        self.systems.append(system)
+        self.tool_names.append([t["name"] for t in tools])
         if self._i >= len(self._turns):
             turn = ScriptedTurn(text="(script exhausted)", stop_reason="end_turn")
         else:
