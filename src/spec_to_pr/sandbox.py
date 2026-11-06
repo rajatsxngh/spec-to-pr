@@ -20,6 +20,7 @@ from pathlib import Path, PurePosixPath
 from typing import Protocol
 
 from .config import SandboxLimits
+from .safety import scrub_env
 
 
 @dataclass
@@ -159,7 +160,7 @@ class LocalSandbox:
     def exec(self, command: str, timeout_s: int) -> ExecResult:
         # Put this interpreter's directory first so `python` in task commands is the
         # project venv (which has pytest), as it would be inside the sandbox image.
-        env = dict(os.environ)
+        env = scrub_env(dict(os.environ))  # no tokens or keys, even in the dev sandbox
         env["PATH"] = os.path.dirname(sys.executable) + os.pathsep + env.get("PATH", "")
         try:
             proc = subprocess.run(

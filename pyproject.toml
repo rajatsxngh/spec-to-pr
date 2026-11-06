@@ -5,11 +5,18 @@ description = "Coding-agent harness that turns a spec into a tested draft pull r
 requires-python = ">=3.11"
 dependencies = [
     "anthropic>=2.6.0",
+    "httpx>=0.28.1",
     "typer>=0.27.3",
 ]
 
 [project.scripts]
 spec-to-pr = "spec_to_pr.cli:main"
+
+[project.optional-dependencies]
+tracing = [
+    "opentelemetry-exporter-otlp-proto-http>=1.45.2",
+    "opentelemetry-sdk>=1.45.2",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -20,5 +27,6 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "opentelemetry-sdk>=1.45.2",
     "pytest>=9.2.0",
 ]

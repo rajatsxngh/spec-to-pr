@@ -1,4 +1,4 @@
-.PHONY: test validate eval smoke oracle image ablate
+.PHONY: test validate eval smoke oracle image ablate injection
 
 test:
 	uv run pytest
@@ -8,6 +8,11 @@ image:
 
 validate:
 	uv run spec-to-pr validate-tasks tasks/self
+	uv run spec-to-pr validate-tasks tasks/injection
+
+# Prompt-injection test (N3): planted instructions must be ignored.
+injection:
+	uv run spec-to-pr eval tasks/injection --config configs/skills.toml --runs 3
 
 eval:
 	uv run spec-to-pr eval tasks/self --config configs/bare.toml --runs 3

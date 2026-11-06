@@ -1,12 +1,14 @@
 # Spec-to-PR
 
 An open-source coding-agent harness that turns a written spec into a tested draft pull request.
-This repository is at **milestone 3 (verification and skills)**:
+This repository is at **milestone 4 (spec to draft PR)**:
 
 - **M1:** a sandboxed agent loop with five tools, JSONL trajectory logging and per-task budgets.
 - **M2:** a task set with hidden tests, a parallel eval runner with a hard spend cap, and a scoreboard.
 - **M3:** test-first editing, a finish gate that proves the new test reproduces the issue, a
   fresh-context reviewer, a test-weakening detector, and on-demand skills plus `AGENTS.md`.
+- **M4:** `spec-to-pr run SPEC` opens a draft PR; a dangerous-command denylist and secret scrubbing;
+  a prompt-injection task set; OpenTelemetry tracing.
 
 `spec-to-pr solve` runs with verification and skills on (`--no-verification`, `--no-skills` to
 turn them off). Eval configs switch them per ablation rung: `configs/bare.toml`,
@@ -24,7 +26,27 @@ Running the agent for real needs:
   `uv run spec-to-pr build-image`
 - **Claude API credentials**: `ANTHROPIC_API_KEY`, or a profile from `ant auth login`.
 
-## Run
+## Spec to draft PR
+
+```bash
+uv run spec-to-pr run spec.md --repo path/to/repo            # opens a draft PR
+uv run spec-to-pr run spec.md --repo path/to/repo --dry-run  # stops at a local branch
+```
+
+The repo must be clean and have a GitHub `origin`. The agent works in the sandbox with verification
+and skills on; the patch is committed on a new `spec-to-pr/...` branch in a temporary worktree (your
+working tree is not touched), pushed with your normal git credentials, and opened as a **draft** PR
+whose description has the spec, diff summary, test results, review verdict, integrity flags and cost.
+The GitHub token comes from `GH_TOKEN`/`GITHUB_TOKEN` or `gh auth token` and stays on the host.
+
+## Tracing
+
+`uv sync --extra tracing`, then set `OTEL_EXPORTER_OTLP_ENDPOINT` (and `OTEL_EXPORTER_OTLP_HEADERS`
+for Langfuse). Each run exports a `spec_to_pr.run` span with `chat` and `execute_tool` children
+carrying `gen_ai.*` token counts and `spec_to_pr.cost_usd`. Works with Langfuse, Phoenix or any OTLP
+backend.
+
+## Run one task
 
 ```bash
 uv run spec-to-pr solve examples/planted_bug --task-file examples/planted_bug/TASK.md
@@ -82,4 +104,8 @@ only when Docker and the sandbox image are available.
 | `verification.py` | Test-first gate, finish gate, test-weakening detector | F7, N2 |
 | `review.py` | Fresh-context reviewer subagent | F7 |
 | `skills.py`, `skills/` | On-demand skills and `AGENTS.md` loading | F8 |
+| `prflow.py`, `github.py` | Spec-to-draft-PR flow and GitHub REST client | F10 |
+| `safety.py` | Command denylist and secret scrubbing | N1 |
+| `tracing.py` | OpenTelemetry spans | N4 |
+| `tasks/injection/` | Planted-instruction tasks with integrity checks | N3 |
 | `.github/workflows/ci.yml` | Tests, task validation, oracle eval, 5-task smoke eval | N6 |

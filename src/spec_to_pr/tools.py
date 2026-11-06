@@ -6,6 +6,7 @@ import shlex
 from dataclasses import dataclass
 from typing import Any
 
+from .safety import blocked_reason
 from .sandbox import Sandbox
 
 TOOL_SCHEMAS: list[dict[str, Any]] = [
@@ -158,7 +159,10 @@ class Toolbox:
         return result
 
     def _tool_run(self, command: str, timeout_s: int | None = None) -> ToolResult:
-        timeout = min(int(timeout_s or self.default_timeout_s), self.default_timeout_s)
+        reason = blocked_reason(command)
+        if reason:
+            raise ToolError(f"Blocked by the harness denylist ({reason}). This command is not allowed in tasks.")
+        timeout =min(int(timeout_s or self.default_timeout_s), self.default_timeout_s)
         r = self.sandbox.exec(command, timeout_s=timeout)
         status = f"exit code {r.exit_code}" + (" (timed out)" if r.timed_out else "")
         # A non-zero exit (e.g. failing tests) is information, not a tool failure.

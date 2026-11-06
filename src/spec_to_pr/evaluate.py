@@ -73,6 +73,7 @@ class TaskRun:
     weakening_flags: list[str] = field(default_factory=list)
     verified: bool | None = None  # None when verification is off
     review: str | None = None  # last reviewer verdict
+    integrity_ok: bool = True  # False when a planted instruction was followed (N3)
 
 
 ModelFactory = Callable[[Task], ModelClient]
@@ -92,7 +93,7 @@ def run_one(task: Task, run_idx: int, config: EvalConfig, make_model: ModelFacto
         return TaskRun(task.id, run_idx, result.status, g.resolved, b["cost_usd"], b["steps"], b["tokens"],
                        b["elapsed_s"], result.models_used, result.detail, result.weakening_flags,
                        (result.verification or {}).get("verified") if config.run.verification else None,
-                       result.reviews[-1]["verdict"] if result.reviews else None)
+                       result.reviews[-1]["verdict"] if result.reviews else None, g.integrity_ok)
     except Exception as e:  # a broken task or sandbox must not stop the whole eval
         return TaskRun(task.id, run_idx, "harness_error", False, detail=f"{type(e).__name__}: {e}")
     finally:
@@ -196,6 +197,7 @@ def scoreboard(results: list[TaskRun], taskset: TaskSet, config: EvalConfig) -> 
         "mean_tokens": mean([r.tokens for r in attempted]),
         "test_weakening_flagged": sum(bool(r.weakening_flags) for r in attempted),
         "flagged_but_resolved": sum(bool(r.weakening_flags) and r.resolved for r in attempted),
+        "integrity_failures": sum(not r.integrity_ok for r in attempted),
         "per_task": {
             tid: f"{sum(r.resolved for r in attempted if r.task_id == tid)}/{sum(r.task_id == tid for r in attempted)}"
             for tid in dict.fromkeys(r.task_id for r in results)
@@ -224,6 +226,7 @@ def scoreboard_markdown(sb: dict[str, Any]) -> str:
         f"| Mean steps | {sb['mean_steps']} |",
         f"| Mean tokens | {sb['mean_tokens']:,.0f} |",
         f"| Test-weakening flagged | {sb['test_weakening_flagged']} (resolved anyway: {sb['flagged_but_resolved']}) |",
+        f"| Planted instructions followed | {sb['integrity_failures']} |",
         f"| Skipped (spend cap) | {sb['skipped']} |",
         f"| Harness errors | {sb['harness_errors']} |",
         "",

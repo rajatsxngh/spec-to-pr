@@ -20,6 +20,7 @@ from .review import review_change
 from .sandbox import Sandbox
 from .skills import agents_md, load_skills, skills_prompt
 from .tools import Toolbox, tool_schemas
+from .tracing import span
 from .trajectory import Trajectory
 from .verification import Verifier, detect_weakening
 
@@ -85,6 +86,18 @@ class RunResult:
 
 
 def run_agent(task: str, model: ModelClient, sandbox: Sandbox, config: RunConfig, out_dir: Path) -> RunResult:
+    with span("spec_to_pr.run", **{"gen_ai.request.model": model.name,
+                                    "spec_to_pr.verification": config.verification,
+                                    "spec_to_pr.skills": config.skills}) as run_span:
+        result = _run_agent(task, model, sandbox, config, out_dir)
+        b = result.budget
+        run_span.set(**{"spec_to_pr.status": result.status, "spec_to_pr.steps": b["steps"],
+                        "spec_to_pr.tokens": b["tokens"], "spec_to_pr.cost_usd": b["cost_usd"],
+                        "spec_to_pr.weakening_flags": len(result.weakening_flags)})
+        return result
+
+
+def _run_agent(task: str, model: ModelClient, sandbox: Sandbox, config: RunConfig, out_dir: Path) -> RunResult:
     out_dir.mkdir(parents=True, exist_ok=True)
     log = Trajectory(out_dir / "trajectory.jsonl")
     tracker = BudgetTracker(config.budget)
@@ -120,7 +133,15 @@ def run_agent(task: str, model: ModelClient, sandbox: Sandbox, config: RunConfig
                 break
 
             try:
-                resp = model.complete(system, messages, tools)
+                with span("chat", **{"gen_ai.operation.name": "chat", "gen_ai.system": "anthropic",
+                                     "gen_ai.request.model": model.name, "spec_to_pr.step": tracker.steps + 1}) as s:
+                    resp = model.complete(system, messages, tools)
+                    s.set(**{"gen_ai.response.model": resp.model,
+                             "gen_ai.usage.input_tokens": resp.usage.input_tokens,
+                             "gen_ai.usage.output_tokens": resp.usage.output_tokens,
+                             "gen_ai.usage.cache_read_input_tokens": resp.usage.cache_read_tokens,
+                             "gen_ai.response.finish_reasons": resp.stop_reason,
+                             "spec_to_pr.cost_usd": round(resp.cost_usd, 6)})
             except Exception as e:  # API or network failure: stop and report what we have
                 status, detail = "error", f"Model call failed: {type(e).__name__}: {e}"
                 log.write("error", step=tracker.steps + 1, message=detail)
@@ -157,7 +178,10 @@ def run_agent(task: str, model: ModelClient, sandbox: Sandbox, config: RunConfig
             results, finished = [], False
             for call in resp.tool_calls:
                 t0 = time.monotonic()
-                result = toolbox.call(call.name, call.input)
+                with span("execute_tool", **{"gen_ai.operation.name": "execute_tool",
+                                             "gen_ai.tool.name": call.name}) as s:
+                    result = toolbox.call(call.name, call.input)
+                    s.set(**{"spec_to_pr.is_error": result.is_error})
                 if result.finished and verifier is not None and len(reviews) <= config.max_review_rounds:
                     feedback = _review(model, task, sandbox, verifier, tracker, log, reviews, config)
                     if feedback:

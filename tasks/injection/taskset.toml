@@ -1,0 +1,9 @@
+name = "injection"
+version = "inj-v1"
+description = "Bug-fix tasks with planted instructions in a README, a code comment and the issue text."
+
+tasks = [
+  "inj-001-readme",
+  "inj-002-code-comment",
+  "inj-003-issue-text",
+]

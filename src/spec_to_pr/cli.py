@@ -76,6 +76,69 @@ def solve(
     raise typer.Exit(0 if result.status == "finished" else 1)
 
 
+@app.command("run")
+def run_cmd(
+    spec: Path = typer.Argument(..., exists=True, dir_okay=False, help="Markdown spec file."),
+    repo: Path = typer.Option(Path("."), exists=True, file_okay=False, help="Git repository to change."),
+    dry_run: bool = typer.Option(False, help="Stop at a local branch: no push, no PR."),
+    sandbox: str = typer.Option("docker", help="docker (isolated) or local (unsafe, for development only)."),
+    image: str = typer.Option(DEFAULT_IMAGE),
+    model: str = typer.Option(ModelSettings.model),
+    effort: str = typer.Option(ModelSettings.effort),
+    max_steps: int = typer.Option(Budget.max_steps),
+    max_usd: float = typer.Option(Budget.max_usd),
+    max_minutes: float = typer.Option(Budget.max_seconds / 60),
+    out: Path = typer.Option(Path("runs")),
+) -> None:
+    """Spec in, draft PR out: run the agent with verification, then open a draft PR."""
+    from .github import GitHubError, RestGitHub, github_token
+    from .prflow import RepoError, inspect_repo, run_spec
+    from .tracing import setup_tracing
+
+    try:
+        price_for(model)
+    except KeyError as e:
+        raise typer.BadParameter(str(e.args[0]), param_hint="--model") from None
+    github = None
+    try:
+        inspect_repo(repo, need_remote=not dry_run)  # fail before spending anything
+        if not dry_run:
+            token = github_token()
+            if not token:
+                raise typer.BadParameter("No GitHub token: set GH_TOKEN or log in with `gh auth login`, or use --dry-run.")
+            github = RestGitHub(token)
+    except (RepoError, GitHubError) as e:
+        raise typer.BadParameter(str(e), param_hint="--repo") from None
+
+    config = RunConfig(
+        budget=Budget(max_steps=max_steps, max_usd=max_usd, max_seconds=max_minutes * 60),
+        model=ModelSettings(model=model, effort=effort),
+        verification=True,
+        skills=True,
+    )
+    setup_tracing()
+    factory = _sandbox_factory(sandbox, image, config.sandbox)
+    make = lambda root: factory(_RepoTask(root))  # noqa: E731
+    run_dir = out / time.strftime("%Y%m%d-%H%M%S")
+    outcome = run_spec(spec.read_text(encoding="utf-8"), repo, config, AnthropicModel(config.model), make,
+                       github, run_dir)
+    if outcome.result:
+        b = outcome.result.budget
+        typer.echo(f"agent: {outcome.result.status}; cost ${b['cost_usd']:.4f}, {b['steps']} steps, {b['elapsed_s']}s")
+    typer.echo(outcome.reason)
+    if outcome.body_path:
+        typer.echo(f"PR description: {outcome.body_path}")
+    typer.echo(f"report: {run_dir / 'report.md'}")
+    raise typer.Exit(0 if outcome.status != "no_pr" else 1)
+
+
+class _RepoTask:
+    """Adapts a repo root to the task shape the sandbox factory expects."""
+
+    def __init__(self, root: Path):
+        self.repo, self.image, self.commit = root, None, None
+
+
 def _sandbox_factory(kind: str, image: str, limits: SandboxLimits):
     if kind == "docker":
         return lambda task: DockerSandbox(task.repo, limits, image=task.image or image, commit=task.commit)
@@ -152,6 +215,7 @@ def validate_tasks(
         v = validate_task(task, make)
         bad += not v.ok
         typer.echo(f"{'ok  ' if v.ok else 'BAD '} {task.id}  fails_on_base={v.fails_on_base} "
+                   f"violation_caught={v.violation_caught} "
                    f"passes_with_solution={v.passes_with_solution}")
         if not v.ok:
             typer.echo((v.solution_output or v.base_output)[-1500:])
