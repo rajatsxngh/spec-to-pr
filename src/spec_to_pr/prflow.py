@@ -19,8 +19,9 @@ from typing import Callable
 
 from .agent import RunResult, run_agent
 from .config import RunConfig
-from .github import GitHubClient, parse_remote
+from .github import GitHubClient, Issue, parse_remote
 from .models import ModelClient
+from .planning import Approver
 from .sandbox import Sandbox
 
 BOT_NAME, BOT_EMAIL = "spec-to-pr", "spec-to-pr@users.noreply.github.com"
@@ -76,10 +77,21 @@ def branch_name(title: str) -> str:
     return f"spec-to-pr/{slug}-{time.strftime('%Y%m%d%H%M%S')}"
 
 
-def pr_body(spec: str, result: RunResult, diffstat: str) -> str:
+def spec_from_issue(issue: Issue) -> str:
+    return (f"# {issue.title}\n\n{issue.body.strip()}\n\n"
+            f"(GitHub issue #{issue.number} by @{issue.author}: {issue.url})")
+
+
+def pr_body(spec: str, result: RunResult, diffstat: str, issue: Issue | None = None) -> str:
     b = result.budget
     v = result.verification
-    lines = ["## Spec", "", spec.strip(), "", "## Changes", "", "```", diffstat.strip() or "(none)", "```", ""]
+    lines = [f"Closes #{issue.number}", ""] if issue else []
+    lines += ["## Spec", "", spec.strip(), ""]
+    if result.plan:
+        who = {"auto": "auto-approved (eval mode)", "human": "approved by a human"}.get(result.plan["by"], result.plan["by"])
+        edited = ", with edits" if result.plan["action"] == "edit" else ""
+        lines += ["## Plan", "", f"_{who}{edited}_", "", result.plan["text"].strip(), ""]
+    lines += ["## Changes", "", "```", diffstat.strip() or "(none)", "```", ""]
     lines += ["## Tests", ""]
     if v is None:
         lines.append("Verification was off for this run.")
@@ -167,15 +179,19 @@ def run_spec(
     github: GitHubClient | None,
     out_dir: Path,
     push: bool = True,
+    approver: Approver | None = None,
+    issue: Issue | None = None,
 ) -> Outcome:
     """Run the agent on a spec and open a draft PR. With github=None it stops at a local branch."""
     state = inspect_repo(repo, need_remote=github is not None)
     sandbox = make_sandbox(state.root)
     try:
-        result = run_agent(spec, model, sandbox, config, out_dir)
+        result = run_agent(spec, model, sandbox, config, out_dir, approver=approver)
     finally:
         sandbox.close()
 
+    if result.status == "plan_rejected":
+        return Outcome("no_pr", "The plan was rejected; no changes were made", result)
     if result.status != "finished":
         return Outcome("no_pr", f"Agent did not finish: {result.status} ({result.detail})", result)
     if not result.diff.strip():
@@ -184,7 +200,7 @@ def run_spec(
     title = spec_title(spec)
     branch = branch_name(title)
     diffstat = commit_patch(state, result.diff, branch, title, push=push and github is not None)
-    body = pr_body(spec, result, diffstat)
+    body = pr_body(spec, result, diffstat, issue)
     body_path = out_dir / "pr.md"
     body_path.write_text(f"# {title}\n\n{body}\n", encoding="utf-8")
     if github is None:

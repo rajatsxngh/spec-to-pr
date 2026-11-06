@@ -22,7 +22,8 @@ from .skills import agents_md, load_skills, skills_prompt
 from .tools import Toolbox, tool_schemas
 from .tracing import span
 from .trajectory import Trajectory
-from .verification import Verifier, detect_weakening
+from .planning import PLANNING_PROMPT, Approver, Planner, auto_approve
+from .verification import Verifier, changed_files, detect_weakening
 
 BASE_PROMPT = """\
 You are a software engineer working in a git repository inside an isolated sandbox with no network access.
@@ -51,6 +52,8 @@ MAX_NUDGES = 2
 
 def system_prompt(config: RunConfig, skills: dict) -> str:
     prompt = BASE_PROMPT
+    if config.planning:
+        prompt += PLANNING_PROMPT
     if config.verification:
         prompt += VERIFICATION_PROMPT
     if config.skills:
@@ -60,7 +63,7 @@ def system_prompt(config: RunConfig, skills: dict) -> str:
 
 @dataclass
 class RunResult:
-    status: str  # finished | budget_exceeded | refused | stopped_without_finish | error
+    status: str  # finished | plan_rejected | budget_exceeded | refused | stopped_without_finish | error
     summary: str
     detail: str
     budget: dict[str, Any]
@@ -70,6 +73,7 @@ class RunResult:
     weakening_flags: list[str] = field(default_factory=list)
     verification: dict[str, Any] | None = None
     reviews: list[dict[str, Any]] = field(default_factory=list)
+    plan: dict[str, Any] | None = None  # {"text", "action", "by", "note"} when planning was on
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -81,15 +85,19 @@ class RunResult:
             "weakening_flags": self.weakening_flags,
             "verification": self.verification,
             "reviews": self.reviews,
+            "plan": self.plan,
             "diff_bytes": len(self.diff),
         }
 
 
-def run_agent(task: str, model: ModelClient, sandbox: Sandbox, config: RunConfig, out_dir: Path) -> RunResult:
+def run_agent(task: str, model: ModelClient, sandbox: Sandbox, config: RunConfig, out_dir: Path,
+              approver: Approver | None = None) -> RunResult:
+    """Run one task. `approver` decides on the plan when planning is on (default: auto-approve)."""
     with span("spec_to_pr.run", **{"gen_ai.request.model": model.name,
                                     "spec_to_pr.verification": config.verification,
-                                    "spec_to_pr.skills": config.skills}) as run_span:
-        result = _run_agent(task, model, sandbox, config, out_dir)
+                                    "spec_to_pr.skills": config.skills,
+                                    "spec_to_pr.planning": config.planning}) as run_span:
+        result = _run_agent(task, model, sandbox, config, out_dir, approver or auto_approve)
         b = result.budget
         run_span.set(**{"spec_to_pr.status": result.status, "spec_to_pr.steps": b["steps"],
                         "spec_to_pr.tokens": b["tokens"], "spec_to_pr.cost_usd": b["cost_usd"],
@@ -97,16 +105,18 @@ def run_agent(task: str, model: ModelClient, sandbox: Sandbox, config: RunConfig
         return result
 
 
-def _run_agent(task: str, model: ModelClient, sandbox: Sandbox, config: RunConfig, out_dir: Path) -> RunResult:
+def _run_agent(task: str, model: ModelClient, sandbox: Sandbox, config: RunConfig, out_dir: Path,
+               approver: Approver) -> RunResult:
     out_dir.mkdir(parents=True, exist_ok=True)
     log = Trajectory(out_dir / "trajectory.jsonl")
     tracker = BudgetTracker(config.budget)
     verifier = Verifier(sandbox, timeout_s=config.sandbox.command_timeout_s * 2) if config.verification else None
     skills = load_skills(Path(config.skills_dir) if config.skills_dir else None) if config.skills else {}
+    planner = Planner() if config.planning else None
     toolbox = Toolbox(sandbox, config.sandbox.command_timeout_s, config.max_tool_output_chars,
-                      verifier=verifier, skills=skills if config.skills else None)
+                      verifier=verifier, skills=skills if config.skills else None, planner=planner)
     system = system_prompt(config, skills)
-    tools = tool_schemas(config.verification, config.skills)
+    tools = tool_schemas(config.verification, config.skills, config.planning)
     log.write("run_start", task=task, model=model.name, config=asdict(config), skills=list(skills))
     _ensure_git_baseline(sandbox)
 
@@ -175,13 +185,15 @@ def _run_agent(task: str, model: ModelClient, sandbox: Sandbox, config: RunConfi
                 )
                 continue
 
-            results, finished = [], False
+            results, finished, rejected = [], False, False
             for call in resp.tool_calls:
                 t0 = time.monotonic()
                 with span("execute_tool", **{"gen_ai.operation.name": "execute_tool",
                                              "gen_ai.tool.name": call.name}) as s:
                     result = toolbox.call(call.name, call.input)
                     s.set(**{"spec_to_pr.is_error": result.is_error})
+                if result.plan is not None and planner is not None:
+                    result.output, rejected = _decide_plan(result.plan, approver, planner, sandbox, log, out_dir)
                 if result.finished and verifier is not None and len(reviews) <= config.max_review_rounds:
                     feedback = _review(model, task, sandbox, verifier, tracker, log, reviews, config)
                     if feedback:
@@ -195,6 +207,9 @@ def _run_agent(task: str, model: ModelClient, sandbox: Sandbox, config: RunConfi
                 if result.finished:
                     finished, summary = True, result.output
             messages.append({"role": "user", "content": results})  # all results in one message
+            if rejected:
+                status, detail = "plan_rejected", "The plan was rejected; nothing was implemented"
+                break
             if finished:
                 status, detail = "finished", "Agent called finish"
                 break
@@ -204,12 +219,35 @@ def _run_agent(task: str, model: ModelClient, sandbox: Sandbox, config: RunConfi
             log.write("weakening_flags", flags=flags)
         diff = _diff(sandbox)
         verification = verifier.last_check.evidence if verifier and verifier.last_check else None
+        plan = None
+        if planner is not None and planner.decision is not None:
+            d = planner.decision
+            plan = {"text": d.plan, "action": d.action, "by": d.by, "note": d.note}
         result = RunResult(status, summary, detail, tracker.snapshot(), diff, out_dir, models_used,
-                           flags, verification, reviews)
+                           flags, verification, reviews, plan)
         log.write("run_end", **result.to_dict())
         log.close()
         _write_reports(result, task)
     return result
+
+
+def _decide_plan(plan: str, approver: Approver, planner: Planner, sandbox: Sandbox, log: Trajectory,
+                 out_dir: Path) -> tuple[str, bool]:
+    """Ask the approver about a submitted plan. Returns the tool output and whether it was rejected."""
+    decision = approver(plan)
+    planner.plan, planner.decision = plan, decision
+    log.write("plan", action=decision.action, by=decision.by, submitted=plan, approved=decision.plan,
+              note=decision.note)
+    # Nothing may change before approval: undo anything the planning phase touched.
+    if changed_files(sandbox):
+        sandbox.exec("git reset -q --hard HEAD && git clean -fdq", timeout_s=60)
+        log.write("plan_phase_changes_reverted")
+    if decision.action == "reject":
+        return f"The plan was rejected{': ' + decision.note if decision.note else ''}. Stop here.", True
+    (out_dir / "plan.md").write_text(decision.plan, encoding="utf-8")
+    if decision.action == "edit":
+        return ("The plan was approved with edits. Implement this version:\n\n" + decision.plan), False
+    return "The plan was approved. Implement it.", False
 
 
 def _review(model, task, sandbox, verifier, tracker, log, reviews, config) -> str | None:
@@ -247,8 +285,9 @@ def _ensure_git_baseline(sandbox: Sandbox) -> None:
 
 def _diff(sandbox: Sandbox) -> str:
     r = sandbox.exec(
-        "git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git add -A -N . && "
-        "git diff -- . ':(exclude)*__pycache__*' ':(exclude)*.pyc'",
+        # stderr is dropped so git warnings (e.g. line endings) never end up inside the patch
+        "git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git add -A -N . 2>/dev/null && "
+        "git diff -- . ':(exclude)*__pycache__*' ':(exclude)*.pyc' 2>/dev/null",
         timeout_s=60,
     )
     return r.output if r.exit_code == 0 else ""
@@ -273,6 +312,8 @@ def _write_reports(result: RunResult, task: str) -> None:
         v = result.verification
         lines.append(f"- **Verified:** {v.get('verified')} (fails without change: {v.get('fails_without_change')}, "
                      f"passes with change: {v.get('passes_with_change')})")
+    if result.plan:
+        lines.append(f"- **Plan:** {result.plan['action']} by {result.plan['by']} (see plan.md)")
     if result.reviews:
         lines.append(f"- **Reviews:** {', '.join(r['verdict'] for r in result.reviews)}")
     lines.append(f"- **Test-weakening flags:** {'; '.join(result.weakening_flags) or 'none'}")

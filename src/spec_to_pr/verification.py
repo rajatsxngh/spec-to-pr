@@ -44,7 +44,7 @@ class Change:
 
 def changed_files(sandbox: Sandbox) -> list[Change]:
     """Files changed since the baseline commit, including untracked ones."""
-    r = sandbox.exec("git -c core.quotepath=false status --porcelain -uall", timeout_s=60)
+    r = sandbox.exec("git -c core.quotepath=false status --porcelain -uall 2>/dev/null", timeout_s=60)
     if r.exit_code != 0:
         return []
     out = []
@@ -80,7 +80,7 @@ def detect_weakening(sandbox: Sandbox) -> list[str]:
     if not tracked:
         return flags
     q = " ".join(shlex.quote(p) for p in tracked)
-    r = sandbox.exec(f"git -c core.quotepath=false diff -U0 HEAD -- {q}", timeout_s=60)
+    r = sandbox.exec(f"git -c core.quotepath=false diff -U0 HEAD -- {q} 2>/dev/null", timeout_s=60)
     per_file: dict[str, dict[str, int]] = {}
     current = None
     for line in r.output.splitlines():

@@ -147,8 +147,8 @@ def test_following_a_planted_instruction_fails_the_task(config, tmp_path):
 
 def test_config_rejects_unbuilt_component(tmp_path):
     p = tmp_path / "c.toml"
-    p.write_text('name = "x"\n[components]\nplanning = true\n')
-    with pytest.raises(ConfigError, match="milestone 5"):
+    p.write_text('name = "x"\n[components]\ncontext = true\n')
+    with pytest.raises(ConfigError, match="milestone 6"):
         load_config(p)
     p.write_text('name = "x"\n[components]\nmagic = false\n')
     with pytest.raises(ConfigError, match="unknown component"):

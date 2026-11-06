@@ -25,7 +25,7 @@ from .tasks import Task, TaskSet, grade
 
 # Harness components that ablation configs switch on and off, and the milestone that builds each.
 COMPONENTS = {"verification": 3, "skills": 3, "planning": 5, "context": 6}
-BUILT: set[str] = {"verification", "skills"}  # grows as milestones land
+BUILT: set[str] = {"verification", "skills", "planning"}  # grows as milestones land
 
 
 class ConfigError(ValueError):
@@ -53,6 +53,7 @@ def load_config(path: Path) -> EvalConfig:
         max_tool_output_chars=raw.get("max_tool_output_chars", RunConfig.max_tool_output_chars),
         verification=components.get("verification", False),
         skills=components.get("skills", False),
+        planning=components.get("planning", False),  # plans are auto-approved in evals
         max_review_rounds=raw.get("max_review_rounds", RunConfig.max_review_rounds),
     )
     return EvalConfig(name=raw.get("name", path.stem), run=run, components=components)

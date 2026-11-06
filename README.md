@@ -1,7 +1,7 @@
 # Spec-to-PR
 
 An open-source coding-agent harness that turns a written spec into a tested draft pull request.
-This repository is at **milestone 4 (spec to draft PR)**:
+This repository is at **milestone 5 (planning and intake)**:
 
 - **M1:** a sandboxed agent loop with five tools, JSONL trajectory logging and per-task budgets.
 - **M2:** a task set with hidden tests, a parallel eval runner with a hard spend cap, and a scoreboard.
@@ -9,10 +9,13 @@ This repository is at **milestone 4 (spec to draft PR)**:
   fresh-context reviewer, a test-weakening detector, and on-demand skills plus `AGENTS.md`.
 - **M4:** `spec-to-pr run SPEC` opens a draft PR; a dangerous-command denylist and secret scrubbing;
   a prompt-injection task set; OpenTelemetry tracing.
+- **M5:** `plan.md` with an approve / edit / reject gate before any edit; GitHub issue URLs as specs;
+  the plan in the PR description.
 
 `spec-to-pr solve` runs with verification and skills on (`--no-verification`, `--no-skills` to
 turn them off). Eval configs switch them per ablation rung: `configs/bare.toml`,
-`configs/verification.toml`, `configs/skills.toml` (`make ablate` runs all three).
+`configs/verification.toml`, `configs/skills.toml`, `configs/planning.toml` (`make ablate` runs them all;
+plans are auto-approved in evals).
 
 ## Setup
 
@@ -31,7 +34,13 @@ Running the agent for real needs:
 ```bash
 uv run spec-to-pr run spec.md --repo path/to/repo            # opens a draft PR
 uv run spec-to-pr run spec.md --repo path/to/repo --dry-run  # stops at a local branch
+uv run spec-to-pr run https://github.com/OWNER/REPO/issues/12 --repo path/to/repo
 ```
+
+The agent first explores and drafts `plan.md` (files to change, steps, tests to add, acceptance
+criteria). You approve it, edit it in `$EDITOR`, or reject it, which ends the run with no PR.
+`--auto-approve` skips the prompt; `--no-planning` skips planning. A PR made from an issue says
+`Closes #12`.
 
 The repo must be clean and have a GitHub `origin`. The agent works in the sandbox with verification
 and skills on; the patch is committed on a new `spec-to-pr/...` branch in a temporary worktree (your
@@ -105,6 +114,7 @@ only when Docker and the sandbox image are available.
 | `review.py` | Fresh-context reviewer subagent | F7 |
 | `skills.py`, `skills/` | On-demand skills and `AGENTS.md` loading | F8 |
 | `prflow.py`, `github.py` | Spec-to-draft-PR flow and GitHub REST client | F10 |
+| `planning.py` | plan.md, approval gate, plan-phase edit lock | F4 |
 | `safety.py` | Command denylist and secret scrubbing | N1 |
 | `tracing.py` | OpenTelemetry spans | N4 |
 | `tasks/injection/` | Planted-instruction tasks with integrity checks | N3 |

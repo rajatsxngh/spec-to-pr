@@ -6,6 +6,7 @@ import shlex
 from dataclasses import dataclass
 from typing import Any
 
+from .planning import PLAN_TOOL, missing_sections
 from .safety import blocked_reason
 from .sandbox import Sandbox
 
@@ -107,12 +108,14 @@ LOAD_SKILL = {
 }
 
 
-def tool_schemas(verification: bool = False, skills: bool = False) -> list[dict[str, Any]]:
+def tool_schemas(verification: bool = False, skills: bool = False, planning: bool = False) -> list[dict[str, Any]]:
     schemas = [s for s in TOOL_SCHEMAS if not (verification and s["name"] == "finish")]
     if verification:
         schemas.append(FINISH_VERIFIED)
     if skills:
         schemas.append(LOAD_SKILL)
+    if planning:
+        schemas.append(PLAN_TOOL)
     return schemas
 
 
@@ -121,6 +124,7 @@ class ToolResult:
     output: str
     is_error: bool = False
     finished: bool = False
+    plan: str | None = None  # set when a plan was submitted for approval
 
 
 class ToolError(Exception):
@@ -138,7 +142,8 @@ def truncate(text: str, limit: int) -> str:
 
 class Toolbox:
     def __init__(self, sandbox: Sandbox, default_timeout_s: int = 120, max_output_chars: int = 20_000,
-                 verifier: Any = None, skills: dict[str, Any] | None = None):
+                 verifier: Any = None, skills: dict[str, Any] | None = None, planner: Any = None):
+        self.planner = planner  # planning.Planner when F4 is on
         self.sandbox = sandbox
         self.default_timeout_s = default_timeout_s
         self.max_output_chars = max_output_chars
@@ -149,6 +154,10 @@ class Toolbox:
         handler = getattr(self, f"_tool_{name}", None)
         if handler is None:
             return ToolResult(f"Unknown tool: {name}", is_error=True)
+        if self.planner is not None:
+            refusal = self.planner.gate(name)
+            if refusal:
+                return ToolResult(refusal, is_error=True)
         try:
             result = handler(**args)
         except TypeError as e:
@@ -221,6 +230,14 @@ class Toolbox:
         if not check.accepted:
             return ToolResult(check.message, is_error=True)
         return ToolResult(summary, finished=True)
+
+    def _tool_submit_plan(self, plan: str) -> ToolResult:
+        if self.planner is None:
+            raise ToolError("Planning is not enabled")
+        missing = missing_sections(plan)
+        if missing:
+            raise ToolError("plan.md is missing these sections: " + ", ".join(f"## {s}" for s in missing))
+        return ToolResult("Plan submitted for approval.", plan=plan)
 
     def _tool_load_skill(self, name: str) -> ToolResult:
         if self.skills is None:

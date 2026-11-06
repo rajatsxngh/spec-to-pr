@@ -78,9 +78,11 @@ def solve(
 
 @app.command("run")
 def run_cmd(
-    spec: Path = typer.Argument(..., exists=True, dir_okay=False, help="Markdown spec file."),
+    spec: str = typer.Argument(..., help="Markdown spec file, or a GitHub issue URL."),
     repo: Path = typer.Option(Path("."), exists=True, file_okay=False, help="Git repository to change."),
     dry_run: bool = typer.Option(False, help="Stop at a local branch: no push, no PR."),
+    planning: bool = typer.Option(True, help="Draft plan.md and wait for approval before editing (F4)."),
+    auto_approve: bool = typer.Option(False, help="Approve the plan without asking (eval mode)."),
     sandbox: str = typer.Option("docker", help="docker (isolated) or local (unsafe, for development only)."),
     image: str = typer.Option(DEFAULT_IMAGE),
     model: str = typer.Option(ModelSettings.model),
@@ -91,22 +93,41 @@ def run_cmd(
     out: Path = typer.Option(Path("runs")),
 ) -> None:
     """Spec in, draft PR out: run the agent with verification, then open a draft PR."""
-    from .github import GitHubError, RestGitHub, github_token
-    from .prflow import RepoError, inspect_repo, run_spec
+    import sys
+
+    from .github import GitHubError, RestGitHub, github_token, parse_issue_url
+    from .planning import auto_approve as auto_approver
+    from .prflow import RepoError, inspect_repo, run_spec, spec_from_issue
     from .tracing import setup_tracing
 
     try:
         price_for(model)
     except KeyError as e:
         raise typer.BadParameter(str(e.args[0]), param_hint="--model") from None
-    github = None
+    if planning and not auto_approve and not sys.stdin.isatty():
+        raise typer.BadParameter("Plan approval needs a terminal; pass --auto-approve to skip it.")
+
+    # Fail before spending anything: repo state, token, and the spec or issue.
+    github, issue = None, None
     try:
-        inspect_repo(repo, need_remote=not dry_run)  # fail before spending anything
+        state = inspect_repo(repo, need_remote=not dry_run)
+        token = github_token()
         if not dry_run:
-            token = github_token()
             if not token:
                 raise typer.BadParameter("No GitHub token: set GH_TOKEN or log in with `gh auth login`, or use --dry-run.")
             github = RestGitHub(token)
+        parsed = parse_issue_url(spec)
+        if parsed:
+            owner, name, number = parsed
+            if state.owner and (owner.lower(), name.lower()) != (state.owner.lower(), state.name.lower()):
+                raise GitHubError(f"The issue is in {owner}/{name} but the repo's origin is {state.owner}/{state.name}")
+            issue = (github or RestGitHub(token)).get_issue(owner, name, number)
+            spec_text = spec_from_issue(issue)
+        else:
+            path = Path(spec)
+            if not path.is_file():
+                raise typer.BadParameter(f"{spec} is neither a file nor a GitHub issue URL", param_hint="SPEC")
+            spec_text = path.read_text(encoding="utf-8")
     except (RepoError, GitHubError) as e:
         raise typer.BadParameter(str(e), param_hint="--repo") from None
 
@@ -115,13 +136,15 @@ def run_cmd(
         model=ModelSettings(model=model, effort=effort),
         verification=True,
         skills=True,
+        planning=planning,
     )
     setup_tracing()
     factory = _sandbox_factory(sandbox, image, config.sandbox)
     make = lambda root: factory(_RepoTask(root))  # noqa: E731
     run_dir = out / time.strftime("%Y%m%d-%H%M%S")
-    outcome = run_spec(spec.read_text(encoding="utf-8"), repo, config, AnthropicModel(config.model), make,
-                       github, run_dir)
+    approver = auto_approver if auto_approve else _terminal_approver
+    outcome = run_spec(spec_text, repo, config, AnthropicModel(config.model), make, github, run_dir,
+                       approver=approver, issue=issue)
     if outcome.result:
         b = outcome.result.budget
         typer.echo(f"agent: {outcome.result.status}; cost ${b['cost_usd']:.4f}, {b['steps']} steps, {b['elapsed_s']}s")
@@ -130,6 +153,30 @@ def run_cmd(
         typer.echo(f"PR description: {outcome.body_path}")
     typer.echo(f"report: {run_dir / 'report.md'}")
     raise typer.Exit(0 if outcome.status != "no_pr" else 1)
+
+
+def _terminal_approver(plan: str):
+    """Show plan.md and ask: approve, edit (opens $EDITOR), or reject."""
+    from .planning import Decision, missing_sections
+
+    typer.echo("\n" + "=" * 72 + "\nPLAN\n" + "=" * 72 + f"\n{plan}\n" + "=" * 72)
+    while True:
+        choice = typer.prompt("Approve, edit or reject the plan? [a/e/r]", default="a").strip().lower()[:1]
+        if choice == "a":
+            return Decision("approve", plan)
+        if choice == "r":
+            note = typer.prompt("Reason (optional)", default="", show_default=False)
+            return Decision("reject", plan, note=note)
+        if choice == "e":
+            edited = typer.edit(plan, extension=".md")
+            if edited is None or not edited.strip():
+                typer.echo("No changes saved; asking again.")
+                continue
+            missing = missing_sections(edited)
+            if missing:
+                typer.echo(f"The edited plan is missing: {', '.join(missing)}. Try again.")
+                continue
+            return Decision("edit", edited.strip())
 
 
 class _RepoTask:

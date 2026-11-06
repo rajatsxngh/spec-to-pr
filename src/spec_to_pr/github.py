@@ -43,23 +43,36 @@ def github_token() -> str | None:
     return None
 
 
+ISSUE_URL = re.compile(r"^https?://github\.com/(?P<owner>[\w.-]+)/(?P<name>[\w.-]+)/issues/(?P<number>\d+)/?$")
+
+
+def parse_issue_url(url: str) -> tuple[str, str, int] | None:
+    m = ISSUE_URL.match(url.strip())
+    return (m["owner"], m["name"], int(m["number"])) if m else None
+
+
+@dataclass
+class Issue:
+    number: int
+    title: str
+    body: str
+    url: str
+    author: str
+
+
 class GitHubClient(Protocol):
     def create_draft_pr(self, owner: str, repo: str, head: str, base: str, title: str, body: str) -> str: ...
+    def get_issue(self, owner: str, repo: str, number: int) -> Issue: ...
 
 
 class RestGitHub:
-    def __init__(self, token: str, api: str = API, transport: httpx.BaseTransport | None = None):
-        self._client = httpx.Client(
-            base_url=api,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-                "User-Agent": "spec-to-pr",
-            },
-            timeout=30,
-            transport=transport,
-        )
+    def __init__(self, token: str | None, api: str = API, transport: httpx.BaseTransport | None = None):
+        """`token` may be None for read-only access to public repositories (e.g. reading an issue)."""
+        headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
+                   "User-Agent": "spec-to-pr"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        self._client = httpx.Client(base_url=api, headers=headers, timeout=30, transport=transport)
 
     def create_draft_pr(self, owner: str, repo: str, head: str, base: str, title: str, body: str) -> str:
         resp = self._client.post(
@@ -74,12 +87,27 @@ class RestGitHub:
             raise GitHubError(f"GitHub refused the pull request ({resp.status_code}): {detail}")
         return resp.json()["html_url"]
 
+    def get_issue(self, owner: str, repo: str, number: int) -> Issue:
+        resp = self._client.get(f"/repos/{owner}/{repo}/issues/{number}")
+        if resp.status_code >= 400:
+            raise GitHubError(f"Could not read issue #{number} ({resp.status_code}): {resp.text[:300]}")
+        data = resp.json()
+        if "pull_request" in data:
+            raise GitHubError(f"#{number} is a pull request, not an issue")
+        return Issue(number, data["title"], data.get("body") or "", data["html_url"], data["user"]["login"])
+
 
 @dataclass
 class FakeGitHub:
     """Records PR requests instead of calling GitHub. For tests and dry runs."""
 
     calls: list[dict] = field(default_factory=list)
+    issues: dict[int, Issue] = field(default_factory=dict)
+
+    def get_issue(self, owner: str, repo: str, number: int) -> Issue:
+        if number not in self.issues:
+            raise GitHubError(f"Could not read issue #{number} (404)")
+        return self.issues[number]
 
     def create_draft_pr(self, owner: str, repo: str, head: str, base: str, title: str, body: str) -> str:
         self.calls.append(dict(owner=owner, repo=repo, head=head, base=base, title=title, body=body, draft=True))
