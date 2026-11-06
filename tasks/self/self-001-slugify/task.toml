@@ -1,0 +1,9 @@
+id = "self-001-slugify"
+test_cmd = "python -m pytest -q -p no:cacheprovider tests"
+timeout_s = 180
+
+statement = """
+`slugify("Hello, World!")` returns `"hello--world-"` instead of `"hello-world"`.
+Runs of spaces and punctuation should become a single separator, the result should never start or
+end with a separator, and a custom `sep` should work the same way.
+"""

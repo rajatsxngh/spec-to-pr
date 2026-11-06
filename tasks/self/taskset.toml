@@ -1,0 +1,16 @@
+name = "self"
+version = "self-v1"
+description = "Self-written Python tasks with hidden tests."
+
+tasks = [
+  "self-001-slugify",
+  "self-002-ttl-cache",
+  "self-003-csv-line",
+  "self-004-intervals",
+  "self-005-roman",
+  "self-006-semver",
+  "self-007-wrap",
+  "self-008-config-merge",
+  "self-009-token-bucket",
+  "self-010-paginate",
+]

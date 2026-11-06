@@ -1,0 +1,20 @@
+# Ablation rung "Bare loop": agent loop, sandbox, logging, model adapter, budgets.
+name = "bare"
+
+[model]
+model = "claude-opus-5-5"
+effort = "high"
+fallback = false  # evals pin one model so results are comparable
+
+[budget]
+max_steps = 50
+max_tokens = 2_000_000
+max_usd = 2.00
+max_seconds = 1200
+
+# Components switched on by later rungs. Turning one on before its milestone is an error.
+[components]
+verification = false  # M3
+skills = false        # M3
+planning = false      # M5
+context = false       # M6

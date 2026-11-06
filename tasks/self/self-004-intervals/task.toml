@@ -1,0 +1,8 @@
+id = "self-004-intervals"
+test_cmd = "python -m pytest -q -p no:cacheprovider tests"
+timeout_s = 180
+
+statement = """
+`merge([[1, 2], [2, 3]])` returns `[[1, 2], [2, 3]]`. Intervals that touch should merge, so it
+should return `[[1, 3]]`.
+"""

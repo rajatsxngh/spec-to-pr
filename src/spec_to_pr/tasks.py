@@ -1,0 +1,150 @@
+"""Eval tasks (F12, N5): format, loading, hidden-test grading and validation.
+
+A task set is a directory with `taskset.toml` (name, version, task ids) and one directory per task:
+
+    <task>/task.toml   id, statement, test_cmd, timeout_s, optional image and commit
+    <task>/repo/       what the agent sees
+    <task>/hidden/     files copied over the repo before grading (hidden tests, plus the original
+                       visible tests so an agent that weakened them is graded on the originals)
+    <task>/solution/   reference fix, copied over the repo (used only to validate the task)
+"""
+
+from __future__ import annotations
+
+import hashlib
+import tomllib
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable
+
+from .sandbox import Sandbox
+
+
+@dataclass(frozen=True)
+class Task:
+    id: str
+    dir: Path
+    statement: str
+    test_cmd: str
+    timeout_s: int = 180
+    image: str | None = None
+    commit: str | None = None
+
+    @property
+    def repo(self) -> Path:
+        return self.dir / "repo"
+
+    @property
+    def hidden(self) -> Path:
+        return self.dir / "hidden"
+
+    @property
+    def solution(self) -> Path:
+        return self.dir / "solution"
+
+
+@dataclass(frozen=True)
+class TaskSet:
+    name: str
+    version: str
+    dir: Path
+    tasks: list[Task]
+    content_hash: str  # changes whenever any task file changes
+
+
+class TaskError(ValueError):
+    pass
+
+
+def load_task(path: Path) -> Task:
+    meta = tomllib.loads((path / "task.toml").read_text(encoding="utf-8"))
+    for key in ("id", "statement", "test_cmd"):
+        if key not in meta:
+            raise TaskError(f"{path}: task.toml is missing {key!r}")
+    if meta["id"] != path.name:
+        raise TaskError(f"{path}: id {meta['id']!r} does not match the directory name")
+    if not (path / "repo").is_dir():
+        raise TaskError(f"{path}: missing repo/")
+    if not (path / "hidden").is_dir():
+        raise TaskError(f"{path}: missing hidden/")
+    return Task(
+        id=meta["id"],
+        dir=path,
+        statement=meta["statement"].strip(),
+        test_cmd=meta["test_cmd"],
+        timeout_s=int(meta.get("timeout_s", 180)),
+        image=meta.get("image"),
+        commit=meta.get("commit"),
+    )
+
+
+def load_taskset(path: Path) -> TaskSet:
+    manifest_path = path / "taskset.toml"
+    if not manifest_path.exists():
+        raise TaskError(f"{path}: no taskset.toml")
+    manifest = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
+    tasks = [load_task(path / tid) for tid in manifest["tasks"]]
+    return TaskSet(manifest["name"], manifest["version"], path, tasks, _hash_dir(path))
+
+
+def _hash_dir(path: Path) -> str:
+    h = hashlib.sha256()
+    for f in sorted(p for p in path.rglob("*") if p.is_file() and "__pycache__" not in p.parts):
+        h.update(f.relative_to(path).as_posix().encode())
+        h.update(f.read_bytes().replace(b"\r\n", b"\n"))
+    return h.hexdigest()[:12]
+
+
+def overlay(sandbox: Sandbox, source: Path) -> list[str]:
+    """Copy every file under `source` into the sandbox repo at the same relative path."""
+    written = []
+    for f in sorted(p for p in source.rglob("*") if p.is_file() and "__pycache__" not in p.parts):
+        rel = f.relative_to(source).as_posix()
+        sandbox.write_file(rel, f.read_text(encoding="utf-8"))
+        written.append(rel)
+    return written
+
+
+@dataclass
+class Grade:
+    resolved: bool
+    exit_code: int
+    output: str
+
+
+def grade(task: Task, sandbox: Sandbox) -> Grade:
+    """Apply the hidden tests after the agent has finished, then run the task's test command."""
+    overlay(sandbox, task.hidden)
+    r = sandbox.exec(task.test_cmd, timeout_s=task.timeout_s)
+    return Grade(resolved=r.exit_code == 0, exit_code=r.exit_code, output=r.output)
+
+
+@dataclass
+class Validation:
+    task_id: str
+    fails_on_base: bool
+    passes_with_solution: bool
+    base_output: str = ""
+    solution_output: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return self.fails_on_base and self.passes_with_solution
+
+
+def validate_task(task: Task, make_sandbox: Callable[[Task], Sandbox]) -> Validation:
+    """A good task fails its hidden tests on the original code and passes with the reference fix."""
+    base = make_sandbox(task)
+    try:
+        g_base = grade(task, base)
+    finally:
+        base.close()
+    if not task.solution.is_dir():
+        return Validation(task.id, not g_base.resolved, False, g_base.output, "missing solution/")
+    fixed = make_sandbox(task)
+    try:
+        overlay(fixed, task.solution)
+        g_fixed = grade(task, fixed)
+    finally:
+        fixed.close()
+    return Validation(task.id, not g_base.resolved, g_fixed.resolved, g_base.output, g_fixed.output)

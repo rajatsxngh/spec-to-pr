@@ -1,0 +1,9 @@
+id = "self-005-roman"
+test_cmd = "python -m pytest -q -p no:cacheprovider tests"
+timeout_s = 180
+
+statement = """
+Add `from_roman(s)` to `roman.py`. It should parse a Roman numeral back to an int (case-insensitive,
+so `from_roman("mcmxciv") == 1994`) and raise `ValueError` for invalid input such as `"IIII"`, `"VX"`
+or `""`. It must round-trip with `to_roman` for 1 to 3999.
+"""

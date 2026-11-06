@@ -1,0 +1,9 @@
+id = "self-007-wrap"
+test_cmd = "python -m pytest -q -p no:cacheprovider tests"
+timeout_s = 180
+
+statement = """
+`wrap(text, width)` leaves words that are longer than `width` on one over-long line. A word longer
+than `width` should start on a new line and be split into `width`-sized chunks, so
+`wrap("hi abcdefgh", 4) == ["hi", "abcd", "efgh"]`. A `width` below 1 should raise `ValueError`.
+"""

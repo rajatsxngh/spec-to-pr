@@ -1,0 +1,9 @@
+id = "self-010-paginate"
+test_cmd = "python -m pytest -q -p no:cacheprovider tests"
+timeout_s = 180
+
+statement = """
+`paginate(items, page=1, per_page=3)` returns the second page. Pages are 1-based: page 1 is the
+first `per_page` items. A page past the end should return no items with `has_next` false, and a
+`page` or `per_page` below 1 should raise `ValueError`.
+"""

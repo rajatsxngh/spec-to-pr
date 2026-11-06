@@ -1,0 +1,2 @@
+# Keep LF everywhere: files are copied into Linux sandboxes and compared byte for byte.
+* text=auto eol=lf

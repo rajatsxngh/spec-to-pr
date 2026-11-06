@@ -1,0 +1,11 @@
+id = "self-006-semver"
+test_cmd = "python -m pytest -q -p no:cacheprovider tests"
+timeout_s = 180
+
+statement = """
+`compare("1.0.0-alpha", "1.0.0")` returns `1`, but a pre-release sorts before its release.
+`compare` should follow SemVer precedence: numeric identifiers compare as numbers and sort before
+alphanumeric ones, and a shorter set of identifiers sorts first when the rest are equal
+(`1.0.0-alpha < 1.0.0-alpha.1 < 1.0.0-alpha.beta < 1.0.0-beta < 1.0.0-beta.2 < 1.0.0-beta.11 <
+1.0.0-rc.1 < 1.0.0`).
+"""

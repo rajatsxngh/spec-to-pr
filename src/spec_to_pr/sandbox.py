@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import uuid
 from dataclasses import dataclass
@@ -156,10 +157,15 @@ class LocalSandbox:
                 raise SandboxError(f"git checkout {commit} failed: {result.output}")
 
     def exec(self, command: str, timeout_s: int) -> ExecResult:
+        # Put this interpreter's directory first so `python` in task commands is the
+        # project venv (which has pytest), as it would be inside the sandbox image.
+        env = dict(os.environ)
+        env["PATH"] = os.path.dirname(sys.executable) + os.pathsep + env.get("PATH", "")
         try:
             proc = subprocess.run(
                 [self._bash, "-c", command],
                 cwd=self.root,
+                env=env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 timeout=timeout_s,

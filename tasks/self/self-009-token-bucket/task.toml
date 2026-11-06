@@ -1,0 +1,9 @@
+id = "self-009-token-bucket"
+test_cmd = "python -m pytest -q -p no:cacheprovider tests"
+timeout_s = 180
+
+statement = """
+`TokenBucket` lets far too many requests through after it has been idle: tokens keep piling up past
+`capacity`. The bucket should never hold more than `capacity` tokens, and asking for a `cost` larger
+than `capacity` should raise `ValueError` (it could never succeed).
+"""

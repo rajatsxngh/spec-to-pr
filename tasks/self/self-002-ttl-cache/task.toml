@@ -1,0 +1,8 @@
+id = "self-002-ttl-cache"
+test_cmd = "python -m pytest -q -p no:cacheprovider tests"
+timeout_s = 180
+
+statement = """
+`TTLCache` keeps entries alive too long. An entry read exactly `ttl` seconds after it was set
+should already be expired, and expired entries should not count toward `len()` or stay in memory.
+"""

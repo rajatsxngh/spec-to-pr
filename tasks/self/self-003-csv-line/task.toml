@@ -1,0 +1,8 @@
+id = "self-003-csv-line"
+test_cmd = "python -m pytest -q -p no:cacheprovider tests"
+timeout_s = 180
+
+statement = """
+`split_line('a,"say ""hi\"\"\",b')` returns `['a', 'say hi', 'b']`. Inside a quoted field, a doubled
+quote (`""`) is a literal quote character, so the middle field should be `say "hi"`.
+"""

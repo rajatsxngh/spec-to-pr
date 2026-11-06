@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - run: uv run pytest
+      - name: Build sandbox image
+        run: uv run spec-to-pr build-image
+      - name: Validate tasks in Docker
+        run: uv run spec-to-pr validate-tasks tasks/self --sandbox docker
+      - name: Oracle eval (pipeline check, no API calls)
+        run: uv run spec-to-pr eval tasks/self --agent oracle --max-total-usd 0 --sandbox docker
+
+  # N6: 5-task smoke eval on every PR. Needs the ANTHROPIC_API_KEY repository secret, so it is
+  # skipped on forks and until the secret is added. Spend is capped at $5 per run.
+  smoke-eval:
+    runs-on: ubuntu-latest
+    needs: test
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - name: Check for API key
+        id: key
+        run: echo "present=${{ env.ANTHROPIC_API_KEY != '' }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        if: steps.key.outputs.present == 'true'
+      - uses: astral-sh/setup-uv@v6
+        if: steps.key.outputs.present == 'true'
+      - if: steps.key.outputs.present == 'true'
+        run: uv sync --locked && uv run spec-to-pr build-image
+      - name: Smoke eval
+        if: steps.key.outputs.present == 'true'
+        run: uv run spec-to-pr eval tasks/self --config configs/bare.toml --limit 5 --max-total-usd 5 --sandbox docker
+      - name: Publish scoreboard
+        if: steps.key.outputs.present == 'true' && always()
+        run: cat results/*/scoreboard.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: steps.key.outputs.present == 'true' && always()
+        with:
+          name: smoke-eval-results
+          path: results/
