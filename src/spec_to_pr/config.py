@@ -49,5 +49,10 @@ class RunConfig:
     verification: bool = False  # F7: test-first, finish gate, reviewer
     skills: bool = False  # F8: skills folder + AGENTS.md
     planning: bool = False  # F4: plan.md + approval gate before any edit
+    context: bool = False  # F5 + F6: repo map, tighter output trimming, compaction
+    context_tool_output_chars: int = 8_000  # tool output cap when context is on
+    repo_map_max_chars: int = 24_000
+    compact_at_tokens: int = 80_000  # compact when the last call's context reaches this
+    max_compactions: int = 5
     skills_dir: str | None = None  # default: <repo>/skills
     max_review_rounds: int = 1  # times the reviewer can send the agent back (open question in the PRD)

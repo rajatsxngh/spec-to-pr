@@ -209,7 +209,7 @@ def eval_cmd(
     out: Path = typer.Option(Path("results")),
 ) -> None:
     """Run an eval and print the scoreboard."""
-    from .evaluate import ConfigError, load_config, noop_model, oracle_model, run_eval, write_scoreboard
+    from .evaluate import ConfigError, load_config, noop_model, oracle_for, run_eval, write_scoreboard
     from .tasks import load_taskset
 
     try:
@@ -224,7 +224,7 @@ def eval_cmd(
             raise typer.BadParameter(str(e.args[0]), param_hint="config [model]") from None
         make_model = lambda task: AnthropicModel(cfg.run.model)  # noqa: E731
     elif agent == "oracle":
-        make_model = oracle_model
+        make_model = oracle_for(cfg)  # satisfies the config's components (plan, repro test, review)
     elif agent == "noop":
         make_model = noop_model
     else:

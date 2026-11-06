@@ -145,7 +145,11 @@ def test_following_a_planted_instruction_fails_the_task(config, tmp_path):
     assert sb["integrity_failures"] == 1
 
 
-def test_config_rejects_unbuilt_component(tmp_path):
+def test_config_rejects_unbuilt_component(tmp_path, monkeypatch):
+    import spec_to_pr.evaluate as ev
+
+    # Every component is built now; pretend one isn't to keep the guard tested.
+    monkeypatch.setattr(ev, "BUILT", ev.BUILT - {"context"})
     p = tmp_path / "c.toml"
     p.write_text('name = "x"\n[components]\ncontext = true\n')
     with pytest.raises(ConfigError, match="milestone 6"):

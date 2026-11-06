@@ -1,7 +1,7 @@
 # Spec-to-PR
 
 An open-source coding-agent harness that turns a written spec into a tested draft pull request.
-This repository is at **milestone 5 (planning and intake)**:
+This repository is at **milestone 6 (context engineering)**; every harness component is built:
 
 - **M1:** a sandboxed agent loop with five tools, JSONL trajectory logging and per-task budgets.
 - **M2:** a task set with hidden tests, a parallel eval runner with a hard spend cap, and a scoreboard.
@@ -11,11 +11,24 @@ This repository is at **milestone 5 (planning and intake)**:
   a prompt-injection task set; OpenTelemetry tracing.
 - **M5:** `plan.md` with an approve / edit / reject gate before any edit; GitHub issue URLs as specs;
   the plan in the PR description.
+- **M6:** a tree-sitter repo map in the first message, tighter output trimming, and compaction that
+  restarts from the spec, plan, repo map, a summary and the current diff near the token budget.
 
-`spec-to-pr solve` runs with verification and skills on (`--no-verification`, `--no-skills` to
-turn them off). Eval configs switch them per ablation rung: `configs/bare.toml`,
-`configs/verification.toml`, `configs/skills.toml`, `configs/planning.toml` (`make ablate` runs them all;
-plans are auto-approved in evals).
+Eval configs switch components per ablation rung: `configs/bare.toml`, `configs/verification.toml`,
+`configs/skills.toml`, `configs/planning.toml`, `configs/context.toml` (the full harness).
+`make ablate` runs them all; plans are auto-approved in evals.
+
+## Checks
+
+```bash
+uv run python scripts/check.py         # everything (about 10 minutes)
+uv run python scripts/check.py --fast  # skip the test suite
+```
+
+Runs the test suite, validates every task set, runs the oracle agent through the CLI with every
+ablation config (each must resolve 100% with no harness errors or test-weakening flags), runs the
+injection set with the full harness (no planted instruction followed), checks that a no-op agent
+resolves nothing, and loads every CLI command. No API calls. Run it after every milestone.
 
 ## Setup
 
@@ -114,6 +127,8 @@ only when Docker and the sandbox image are available.
 | `review.py` | Fresh-context reviewer subagent | F7 |
 | `skills.py`, `skills/` | On-demand skills and `AGENTS.md` loading | F8 |
 | `prflow.py`, `github.py` | Spec-to-draft-PR flow and GitHub REST client | F10 |
+| `context.py` | Tree-sitter repo map, compaction | F5, F6 |
+| `scripts/check.py` | Integration checks across all components and configs | |
 | `planning.py` | plan.md, approval gate, plan-phase edit lock | F4 |
 | `safety.py` | Command denylist and secret scrubbing | N1 |
 | `tracing.py` | OpenTelemetry spans | N4 |

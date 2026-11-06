@@ -72,6 +72,7 @@ class DockerSandbox:
     ):
         if not shutil.which("docker"):
             raise SandboxError("Docker is not installed or not on PATH.")
+        self.source = repo  # host directory the sandbox was copied from (used for the repo map)
         self.name = f"spec-to-pr-{uuid.uuid4().hex[:12]}"
         cmd = [
             "docker", "run", "-d", "--rm",
@@ -149,6 +150,7 @@ class LocalSandbox:
         if not bash:
             raise SandboxError("LocalSandbox needs bash on PATH (Git Bash on Windows).")
         self._bash = bash
+        self.source = repo
         self._tmp = tempfile.mkdtemp(prefix="spec-to-pr-")
         self.root = Path(self._tmp) / "repo"
         shutil.copytree(repo, self.root, ignore=shutil.ignore_patterns(".venv", "__pycache__", ".pytest_cache"))

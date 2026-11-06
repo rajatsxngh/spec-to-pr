@@ -18,12 +18,8 @@ jobs:
       - run: uv run pytest
       - name: Build sandbox image
         run: uv run spec-to-pr build-image
-      - name: Validate tasks in Docker
-        run: |
-          uv run spec-to-pr validate-tasks tasks/self --sandbox docker
-          uv run spec-to-pr validate-tasks tasks/injection --sandbox docker
-      - name: Oracle eval (pipeline check, no API calls)
-        run: uv run spec-to-pr eval tasks/self --agent oracle --max-total-usd 0 --sandbox docker
+      - name: Integration checks in Docker (every task set and config, no API calls)
+        run: uv run python scripts/check.py --fast
 
   # N6: 5-task smoke eval on every PR. Needs the ANTHROPIC_API_KEY repository secret, so it is
   # skipped on forks and until the secret is added. Spend is capped at $5 per run.

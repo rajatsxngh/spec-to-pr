@@ -25,7 +25,7 @@ from .tasks import Task, TaskSet, grade
 
 # Harness components that ablation configs switch on and off, and the milestone that builds each.
 COMPONENTS = {"verification": 3, "skills": 3, "planning": 5, "context": 6}
-BUILT: set[str] = {"verification", "skills", "planning"}  # grows as milestones land
+BUILT: set[str] = {"verification", "skills", "planning", "context"}  # every component is built
 
 
 class ConfigError(ValueError):
@@ -54,6 +54,8 @@ def load_config(path: Path) -> EvalConfig:
         verification=components.get("verification", False),
         skills=components.get("skills", False),
         planning=components.get("planning", False),  # plans are auto-approved in evals
+        context=components.get("context", False),
+        compact_at_tokens=raw.get("compact_at_tokens", RunConfig.compact_at_tokens),
         max_review_rounds=raw.get("max_review_rounds", RunConfig.max_review_rounds),
     )
     return EvalConfig(name=raw.get("name", path.stem), run=run, components=components)
@@ -247,6 +249,64 @@ def write_scoreboard(results: list[TaskRun], taskset: TaskSet, config: EvalConfi
 
 
 # ---------------------------------------------------------------- reference agents (no API calls)
+
+
+ORACLE_PLAN = """## Files to change
+{files}
+## Steps
+1. Add a test that reproduces the issue.
+2. Apply the fix.
+## Tests to add
+{tests}
+## Acceptance criteria
+- The task's tests pass.
+"""
+
+
+def oracle_for(config: EvalConfig | None = None) -> ModelFactory:
+    """Oracle that satisfies whichever components the config turns on: submits a plan (planning), adds a
+    reproducing test first and passes the finish gate (verification), and approves the review. Checks
+    every component and config end to end, with no API calls."""
+    run = config.run if config else None
+
+    def make(task: Task) -> ModelClient:
+        planning = bool(run and run.planning)
+        verification = bool(run and run.verification)
+        fixes = _solution_edits(task)
+        repro = [f for f in sorted(task.hidden.rglob("*_hidden.py"))]
+        turns = []
+        if planning:
+            files = "\n".join(f"- {e[1]['path']}" for e in fixes)
+            tests = "\n".join(f"- {f.relative_to(task.hidden).as_posix()}" for f in repro) or "- none"
+            plan = ORACLE_PLAN.format(files=files, tests=tests)
+            turns.append(ScriptedTurn(tool_calls=[("submit_plan", {"plan": plan})], usage=_zero()))
+        if verification:
+            for f in repro:
+                rel = f.relative_to(task.hidden).as_posix()
+                turns.append(ScriptedTurn(tool_calls=[("edit_file", {"path": rel, "old_str": "",
+                                                                     "new_str": f.read_text(encoding="utf-8")})],
+                                          usage=_zero()))
+        turns += [ScriptedTurn(tool_calls=[edit], usage=_zero()) for edit in fixes]
+        finish = {"summary": "Applied the reference solution."}
+        if verification:
+            finish["test_command"] = task.test_cmd
+        turns.append(ScriptedTurn(tool_calls=[("finish", finish)], usage=_zero()))
+        if verification:
+            turns.append(ScriptedTurn(tool_calls=[("submit_review", {"verdict": "approve", "issues": []})],
+                                      usage=_zero()))
+        return ScriptedModel(turns)
+
+    return make
+
+
+def _solution_edits(task: Task) -> list[tuple[str, dict]]:
+    edits = []
+    for f in sorted(p for p in task.solution.rglob("*") if p.is_file()):
+        rel = f.relative_to(task.solution).as_posix()
+        original = task.repo / rel
+        old = original.read_text(encoding="utf-8") if original.exists() else ""
+        edits.append(("edit_file", {"path": rel, "old_str": old, "new_str": f.read_text(encoding="utf-8")}))
+    return edits
 
 
 def oracle_model(task: Task) -> ModelClient:
