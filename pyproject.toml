@@ -3,6 +3,8 @@ name = "spec-to-pr"
 version = "0.1.0"
 description = "Coding-agent harness that turns a spec into a tested draft pull request"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "anthropic>=2.6.0",
     "httpx>=0.28.1",

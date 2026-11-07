@@ -172,5 +172,9 @@ Langfuse). Each run exports a `spec_to_pr.run` span with `chat` and `execute_too
 
 ## Status
 
-All eight milestones are built and pass the integration checks with scripted models. Not done yet: the
-real experiment run, the demo recording and the dogfood PRs. The license is still to be chosen.
+All eight milestones are built and pass the integration checks with scripted models, including in the
+Docker sandbox. Not done yet: the real experiment run, the demo recording and the dogfood PRs.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
