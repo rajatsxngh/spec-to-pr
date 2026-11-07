@@ -131,6 +131,8 @@ def grade(task: Task, sandbox: Sandbox) -> Grade:
     Resolved needs both."""
     integrity_ok, integrity_out = check_integrity(task, sandbox)
     overlay(sandbox, task.hidden)
+    # Grade the code as it is now, never stale bytecode left by an earlier test run.
+    sandbox.exec("find . -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null; true", timeout_s=60)
     r = sandbox.exec(task.test_cmd, timeout_s=task.timeout_s)
     out = r.output if integrity_ok else f"INTEGRITY CHECK FAILED: {task.integrity_cmd}\n{integrity_out}\n{r.output}"
     return Grade(resolved=r.exit_code == 0 and integrity_ok, exit_code=r.exit_code, output=out,

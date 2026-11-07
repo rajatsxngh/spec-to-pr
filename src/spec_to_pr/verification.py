@@ -17,7 +17,9 @@ from pathlib import PurePosixPath
 
 from .sandbox import Sandbox
 
-IGNORED_PARTS = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules", ".git"}
+CLEAR_PYCACHE = "find . -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null; true"
+
+IGNORED_PARTS ={"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules", ".git"}
 TEST_NAME = re.compile(r"(^test_.*\.py$|.*_test\.py$|^conftest\.py$|.*\.(test|spec)\.[jt]sx?$)")
 TEST_DIRS = {"tests", "test", "__tests__", "spec"}
 
@@ -183,15 +185,23 @@ class Verifier:
         return check
 
     def _fails_without_sources(self, test_command: str, sources: list[str]) -> bool | None:
-        """Stash the source changes, run the tests, restore. True if the tests fail without them."""
+        """Stash the source changes, run the tests, restore. True if the tests fail without them.
+
+        Bytecode caches are cleared on both sides of the test run: a .pyc compiled from the original
+        code would otherwise be reused after the restore whenever the fix keeps the file's size and
+        lands within the same second (Python checks only whole-second mtime and size)."""
         paths = " ".join(shlex.quote(p) for p in sources)
         script = (
+            f"{CLEAR_PYCACHE}\n"
             f"git stash push --include-untracked --quiet -- {paths} || exit 97\n"
             f"( {test_command} ) >/dev/null 2>&1; code=$?\n"
+            f"{CLEAR_PYCACHE}\n"
             "git stash pop --quiet || exit 98\n"
             "exit $code\n"
         )
-        code, _ = self._run(script)
-        if code in (97, 98):
-            return None  # couldn't check; don't block on harness trouble
+        code, out = self._run(script)
+        if code == 98:
+            raise RuntimeError(f"Could not restore the agent's changes after the finish check (git stash pop): {out}")
+        if code == 97:
+            return None  # nothing could be stashed; don't block on harness trouble
         return code != 0

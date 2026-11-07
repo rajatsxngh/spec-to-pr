@@ -11,4 +11,8 @@ RUN git config --global user.email "agent@spec-to-pr.local" \
     && git config --global user.name "spec-to-pr" \
     && git config --global --add safe.directory /repo
 
+# No .pyc caches: one compiled from the original code can be reused after a same-size edit made in
+# the same second, so tests would run stale code.
+ENV PYTHONDONTWRITEBYTECODE=1
+
 WORKDIR /repo

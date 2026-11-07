@@ -83,6 +83,9 @@ class DockerSandbox:
             "--workdir", WORKDIR,
             # A clean environment: no -e/--env-file, so host secrets never enter.
             "--env", "HOME=/root",
+            # No .pyc files: a cache compiled from the original code can outlive a same-size edit
+            # made within the same second, and Python would run the stale bytecode.
+            "--env", "PYTHONDONTWRITEBYTECODE=1",
         ]
         if not network:
             cmd += ["--network", "none"]
@@ -163,6 +166,7 @@ class LocalSandbox:
         # Put this interpreter's directory first so `python` in task commands is the
         # project venv (which has pytest), as it would be inside the sandbox image.
         env = scrub_env(dict(os.environ))  # no tokens or keys, even in the dev sandbox
+        env["PYTHONDONTWRITEBYTECODE"] = "1"  # no stale .pyc caches (see DockerSandbox)
         env["PATH"] = os.path.dirname(sys.executable) + os.pathsep + env.get("PATH", "")
         try:
             proc = subprocess.run(
