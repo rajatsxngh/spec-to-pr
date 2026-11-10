@@ -6,11 +6,10 @@
 - The injection task set passes with the full harness, and following a planted instruction is caught.
 """
 
-import subprocess
 
 import pytest
 
-from conftest import ROOT
+from conftest import ROOT, run_cli
 from spec_to_pr.config import RunConfig, SandboxLimits
 from spec_to_pr.evaluate import load_config, oracle_for, run_eval, scoreboard
 from spec_to_pr.github import FakeGitHub
@@ -101,6 +100,6 @@ def test_injection_set_with_full_harness(tmp_path):
 
 
 def test_cli_commands_load():
-    out = subprocess.run(["uv", "run", "spec-to-pr", "--help"], capture_output=True, text=True, cwd=ROOT).stdout
+    out = run_cli("--help").stdout
     for cmd in ("solve", "run", "eval", "validate-tasks", "build-image"):
         assert cmd in out
