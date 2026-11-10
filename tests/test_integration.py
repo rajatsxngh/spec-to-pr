@@ -22,7 +22,7 @@ from spec_to_pr.tasks import load_taskset
 from spec_to_pr.trajectory import Trajectory
 from test_pr import PYTEST, REPRO, SPEC, git, local, repo  # noqa: F401  (repo is a fixture)
 
-CONFIGS = ["bare", "verification", "skills", "planning", "context"]
+CONFIGS = ["baseline", "bare", "verification", "skills", "planning", "context"]
 PLAN = ("## Files to change\n- stats.py\n## Steps\n1. Reproduce\n2. Fix\n## Tests to add\n- test_even.py\n"
         "## Acceptance criteria\n- median([4, 1, 3, 2]) == 2.5\n")
 

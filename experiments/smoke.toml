@@ -1,5 +1,5 @@
-# Pipeline check for the experiment runner: every config, two model labels, one run, on the small
-# injection task set. Run it with the oracle agent (no API calls): it is part of scripts/check.py.
+# Pipeline check for the experiment runner: every config (the baseline too), two model labels, one run,
+# on the small injection task set. Run it with the oracle agent (no API calls): it is part of scripts/check.py.
 name = "smoke"
 tasks = "tasks/injection"
 runs = 1
@@ -7,6 +7,7 @@ workers = 4
 max_total_usd = 5.0
 
 configs = [
+  "configs/baseline.toml",  # mini-swe-agent: the reference column, not a rung
   "configs/bare.toml",
   "configs/verification.toml",
   "configs/skills.toml",

@@ -29,10 +29,10 @@ def small_spec(tmp_path, configs=("bare", "context"), models=("claude-haiku-5-5"
 
 def test_full_spec_and_estimate():
     spec = load_spec(ROOT / "experiments" / "full.toml", root=ROOT)
-    assert [c.stem for c in spec.configs] == CONFIGS
+    assert [c.stem for c in spec.configs] == ["baseline", *CONFIGS]
     assert spec.models == ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"]
     est = estimate(spec)
-    assert est == {"cells": 15, "tasks": 10, "task_runs": 450, "worst_case_usd": 900.0, "cap_usd": 150.0}
+    assert est == {"cells": 18, "tasks": 10, "task_runs": 540, "worst_case_usd": 1080.0, "cap_usd": 150.0}
 
 
 def test_spec_errors(tmp_path):
@@ -109,7 +109,7 @@ def test_report_table_deltas():
 def test_cli_estimate_only():
     out = subprocess.run(["uv", "run", "spec-to-pr", "experiment", "experiments/full.toml", "--estimate-only"],
                          capture_output=True, text=True, cwd=ROOT).stdout
-    assert "450 task runs" in out and "$900.00" in out and "$150.00" in out
+    assert "540 task runs" in out and "$1080.00" in out and "$150.00" in out
 
 
 def test_cli_claude_requires_yes():

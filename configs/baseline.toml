@@ -1,0 +1,21 @@
+# The mini-swe-agent baseline (src/spec_to_pr/baseline.py): upstream's agent loop and SWE-bench prompts,
+# one bash tool, run in the same sandbox with the same model, budgets and hidden-test grading as the
+# ablation rungs. Not a rung itself: the experiment report shows it as a reference column.
+name = "baseline"
+agent = "mini-swe-agent"
+
+[model]
+model = "claude-opus-5-5"
+effort = "high"
+fallback = false  # evals pin one model so results are comparable
+
+[budget]
+max_steps = 50
+max_tokens = 2_000_000
+max_usd = 2.00
+max_seconds = 1200
+
+[baseline]
+# worktree: grade the sandbox as the agent left it, exactly as our agent is graded (default).
+# submission: reset and apply only the patch it submitted, as SWE-bench grades mini-swe-agent.
+grade_on = "worktree"
