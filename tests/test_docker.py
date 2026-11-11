@@ -39,3 +39,19 @@ def test_files_and_tests_run(box):
 def test_command_timeout(box):
     r = box.exec("sleep 10", timeout_s=2)
     assert r.timed_out
+
+
+def test_crlf_checkout_is_clean_in_the_container(tmp_path, monkeypatch):
+    """Git for Windows (core.autocrlf=true) checks files out with CRLF over LF blobs; the
+    container's git must not see every line as modified."""
+    from test_pr import crlf_checkout
+
+    work = crlf_checkout(tmp_path, monkeypatch)
+    b = DockerSandbox(work, SandboxLimits(command_timeout_s=60))
+    try:
+        assert b.exec("git status --porcelain", timeout_s=30).output.strip() == ""
+        b.exec("sed -i 's/mid + 1]/mid - 1]/' stats.py", timeout_s=30)
+        diff = b.exec("git diff --numstat", timeout_s=30).output.strip()
+        assert diff == "1\t1\tstats.py"
+    finally:
+        b.close()
