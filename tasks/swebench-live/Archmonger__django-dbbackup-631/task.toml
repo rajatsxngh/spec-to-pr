@@ -1,0 +1,44 @@
+id = "Archmonger__django-dbbackup-631"
+image = "starryzhang/sweb.eval.x86_64.archmonger_1776_django-dbbackup-631"
+workdir = "/testbed"
+test_cmd = "bash .swebench_live/run.sh"
+timeout_s = 1800
+
+statement = '''
+Error: constraint does not exist when restoring a backup on a fresh db
+1. Backed up the database
+2. Restored the database from the backup
+
+=> Works fine :white_check_mark: 
+
+
+1. Back up the database
+2. Wipe out the database
+3. Do the initial django migrate
+4. Restore the same backup as in the previous case
+
+=> I get the following error :x:
+
+```
+ERROR:  constraint "socialaccount_socialapp_site_site_id_2579dee5_fk_django_site_id" of relation "socialaccount_socialapp_sites" does not exist
+```
+
+I guess the issue comes from constraint name not being constant (`2579dee5` par above).
+
+Why not use `IF NOT EXIST` (https://www.postgresql.org/docs/9.0/static/sql-altertable.html) ?
+Or simply wipe out the whole database before importing and remove all the DROP commands?
+
+I guess I miss some historical data (reasons behind decisions), but for now I have a hard time figuring how to restore this dump without manual edit of the relevant lines.
+'''
+
+[swebench_live]
+instance_id = "Archmonger__django-dbbackup-631"
+repo = "Archmonger/django-dbbackup"
+pull_number = "631"
+base_commit = "ced35bd28540ea0630a759b336054b5e4779f765"
+created_at = "2025-08-23T08:37:51"
+docker_image = "starryzhang/sweb.eval.x86_64.archmonger_1776_django-dbbackup-631"
+test_cmds = ["pytest -rA"]
+fail_to_pass = 1
+pass_to_pass = 265
+image_gb_compressed = 0.457

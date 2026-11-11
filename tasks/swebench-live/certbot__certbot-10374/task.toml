@@ -1,0 +1,24 @@
+id = "certbot__certbot-10374"
+image = "starryzhang/sweb.eval.x86_64.certbot_1776_certbot-10374"
+workdir = "/testbed"
+test_cmd = "bash .swebench_live/run.sh"
+timeout_s = 1800
+
+statement = '''
+[Discussion]: Consider the correct logging level for ARI fetch failures
+### Task description
+
+The big red warning that doesn't affect cert renewal is confusing people, so https://github.com/certbot/certbot/pull/10335 changes it down to `info`. But maybe people do want to see this? But maybe not the whole error message or something, maybe we use display util? Let's consider this further after the point release.
+'''
+
+[swebench_live]
+instance_id = "certbot__certbot-10374"
+repo = "certbot/certbot"
+pull_number = "10374"
+base_commit = "33d3162c24ee550bc77255f840bb518f8e9776d7"
+created_at = "2025-07-25T14:53:34"
+docker_image = "starryzhang/sweb.eval.x86_64.certbot_1776_certbot-10374"
+test_cmds = ["pytest -rA acme certbot certbot-dns-cloudflare certbot-dns-digitalocean certbot-dns-dnsimple certbot-dns-dnsmadeeasy certbot-dns-gehirn certbot-dns-google certbot-dns-linode certbot-dns-luadns certbot-dns-nsone certbot-dns-ovh certbot-dns-rfc2136 certbot-dns-route53 certbot-dns-sakuracloud certbot-nginx certbot-apache"]
+fail_to_pass = 3
+pass_to_pass = 2003
+image_gb_compressed = 0.754

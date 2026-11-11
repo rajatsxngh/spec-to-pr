@@ -1,0 +1,32 @@
+id = "Archmonger__django-dbbackup-626"
+image = "starryzhang/sweb.eval.x86_64.archmonger_1776_django-dbbackup-626"
+workdir = "/testbed"
+test_cmd = "bash .swebench_live/run.sh"
+timeout_s = 1800
+
+statement = '''
+Change default sqlite connector to `SqliteBackupConnector`
+### Current Situation
+
+The current default connector is `SqliteConnector`, as indicated by the docs and `base.py`. However, this connector is very custom and uses a lot of non-standard, and error prone logic.
+
+### Proposed Actions
+
+Keep `SqliteConnector` in the repository, but set the default connector to `SqliteBackupConnector`
+
+### System Information
+
+_No response_
+'''
+
+[swebench_live]
+instance_id = "Archmonger__django-dbbackup-626"
+repo = "Archmonger/django-dbbackup"
+pull_number = "626"
+base_commit = "af665e759bbba078afef0366a47adc9521eec2f8"
+created_at = "2025-08-22T08:56:35"
+docker_image = "starryzhang/sweb.eval.x86_64.archmonger_1776_django-dbbackup-626"
+test_cmds = ["hatch test -rA", "hatch test -- -rA"]
+fail_to_pass = 1
+pass_to_pass = 267
+image_gb_compressed = 0.528

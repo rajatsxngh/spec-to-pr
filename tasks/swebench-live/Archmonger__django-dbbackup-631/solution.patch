@@ -1,0 +1,56 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 9ad9f355..fea76a76 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -26,6 +26,7 @@ Don't forget to remove deprecated code on each major release!
+ - This repository has been transferred out of Jazzband due to logistical concerns.
+ - Improve error message for missing database tools (`pg_dump`, `mysqldump`, etc.) to provide guidance instead of generic "No such file or directory" errors.
+ - Changed default SQLite connector from `SqliteConnector` to `SqliteBackupConnector` to adhere to best practices.
++- Set default `IF_EXISTS` to `True` for PostgreSQL connectors (`PgDumpConnector` and `PgDumpBinaryConnector`) to reduce restore errors when objects are absent.
+ 
+ ### Removed
+ 
+diff --git a/dbbackup/db/postgresql.py b/dbbackup/db/postgresql.py
+index ad2d77e5..30d3ef6e 100644
+--- a/dbbackup/db/postgresql.py
++++ b/dbbackup/db/postgresql.py
+@@ -32,6 +32,7 @@ class PgDumpConnector(BaseCommandDBConnector):
+     restore_cmd = "psql"
+     single_transaction = True
+     drop = True
++    if_exists = True
+     schemas: Optional[List[str]] = []
+ 
+     def _create_dump(self):
+@@ -45,6 +46,9 @@ def _create_dump(self):
+         if self.drop:
+             cmd += " --clean"
+ 
++        if self.if_exists or self.drop:
++            cmd += " --if-exists"
++
+         if self.schemas:
+             # First schema is not prefixed with -n
+             # when using join function so add it manually.
+@@ -112,7 +116,7 @@ class PgDumpBinaryConnector(PgDumpConnector):
+     restore_cmd = "pg_restore"
+     single_transaction = True
+     drop = True
+-    if_exists = False
++    if_exists = True
+     pg_options = None
+ 
+     def _create_dump(self):
+diff --git a/docs/src/databases.md b/docs/src/databases.md
+index dbd8163b..471f9a8c 100644
+--- a/docs/src/databases.md
++++ b/docs/src/databases.md
+@@ -114,7 +114,7 @@ All PostgreSQL connectors have the following settings:
+ | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+ | SINGLE_TRANSACTION | Wrap restore in a single transaction so errors cause full rollback (`--single-transaction` for `psql` / `pg_restore`).                  | `True`  |
+ | DROP               | Include / execute drop statements when restoring (`--clean` with `pg_dump` / `pg_restore`). In binary mode drops happen during restore. | `True`  |
+-| IF_EXISTS          | Add `IF EXISTS` to destructive statements in clean mode. Automatically enabled when `DROP=True` to prevent identity column errors.      | `False` |
++| IF_EXISTS          | Add `IF EXISTS` to destructive statements in clean mode. Enabled by default, and when `DROP=True` to prevent identity column errors.    | `True`  |
+ 
+ #### PgDumpBinaryConnector
+ 

@@ -1,0 +1,106 @@
+diff --git a/authlib/integrations/sqla_oauth2/client_mixin.py b/authlib/integrations/sqla_oauth2/client_mixin.py
+index 2bba8a57..c8835086 100644
+--- a/authlib/integrations/sqla_oauth2/client_mixin.py
++++ b/authlib/integrations/sqla_oauth2/client_mixin.py
+@@ -110,6 +110,10 @@ def software_id(self):
+     def software_version(self):
+         return self.client_metadata.get("software_version")
+ 
++    @property
++    def id_token_signed_response_alg(self):
++        return self.client_metadata.get("id_token_signed_response_alg")
++
+     def get_client_id(self):
+         return self.client_id
+ 
+diff --git a/authlib/oidc/core/grants/code.py b/authlib/oidc/core/grants/code.py
+index e34d19d2..767781fa 100644
+--- a/authlib/oidc/core/grants/code.py
++++ b/authlib/oidc/core/grants/code.py
+@@ -22,8 +22,12 @@
+ class OpenIDToken:
+     def get_jwt_config(self, grant):  # pragma: no cover
+         """Get the JWT configuration for OpenIDCode extension. The JWT
+-        configuration will be used to generate ``id_token``. Developers
+-        MUST implement this method in subclass, e.g.::
++        configuration will be used to generate ``id_token``.
++        If ``alg`` is undefined, the ``id_token_signed_response_alg`` client
++        metadata will be used. By default ``RS256`` will be used.
++        If ``key`` is undefined, the ``jwks_uri`` or ``jwks`` client metadata
++        will be used.
++        Developers MUST implement this method in subclass, e.g.::
+ 
+             def get_jwt_config(self, grant):
+                 return {
+@@ -77,6 +81,13 @@ def process_token(self, grant, response):
+         config = self.get_jwt_config(grant)
+         config["aud"] = self.get_audiences(request)
+ 
++        # Per OpenID Connect Registration 1.0 Section 2:
++        # Use client's id_token_signed_response_alg if specified
++        if not config.get("alg") and (
++            client_alg := request.client.id_token_signed_response_alg
++        ):
++            config["alg"] = client_alg
++
+         if authorization_code:
+             config["nonce"] = authorization_code.get_nonce()
+             config["auth_time"] = authorization_code.get_auth_time()
+diff --git a/authlib/oidc/core/grants/implicit.py b/authlib/oidc/core/grants/implicit.py
+index 398367da..4aafdede 100644
+--- a/authlib/oidc/core/grants/implicit.py
++++ b/authlib/oidc/core/grants/implicit.py
+@@ -4,6 +4,7 @@
+ from authlib.oauth2.rfc6749 import ImplicitGrant
+ from authlib.oauth2.rfc6749 import InvalidScopeError
+ from authlib.oauth2.rfc6749 import OAuth2Error
++from authlib.oauth2.rfc6749.errors import InvalidRequestError
+ from authlib.oauth2.rfc6749.hooks import hooked
+ 
+ from .util import create_response_mode_response
+@@ -148,6 +149,26 @@ def process_implicit_token(self, token, code=None):
+         if code is not None:
+             config["code"] = code
+ 
++        # Per OpenID Connect Registration 1.0 Section 2:
++        # Use client's id_token_signed_response_alg if specified
++        if not config.get("alg") and (
++            client_alg := self.request.client.id_token_signed_response_alg
++        ):
++            if client_alg == "none":
++                # According to oidc-registration §2 the 'none' alg is not valid in
++                # implicit flows:
++                #    The value none MUST NOT be used as the ID Token alg value unless
++                #    the Client uses only Response Types that return no ID Token from
++                #    the Authorization Endpoint (such as when only using the
++                #    Authorization Code Flow).
++                raise InvalidRequestError(
++                    "id_token must be signed in implicit flows",
++                    redirect_uri=self.request.payload.redirect_uri,
++                    redirect_fragment=True,
++                )
++
++            config["alg"] = client_alg
++
+         user_info = self.generate_user_info(self.request.user, token["scope"])
+         id_token = generate_id_token(token, user_info, **config)
+         token["id_token"] = id_token
+diff --git a/docs/changelog.rst b/docs/changelog.rst
+index 7f24030f..a9c49e64 100644
+--- a/docs/changelog.rst
++++ b/docs/changelog.rst
+@@ -6,6 +6,14 @@ Changelog
+ 
+ Here you can see the full list of changes between each Authlib release.
+ 
++Version 1.6.3
++-------------
++
++**Unreleased**
++
++- OIDC ``id_token`` are signed according to ``id_token_signed_response_alg``
++  client metadata. :issue:`755`
++
+ Version 1.6.2
+ -------------
+ 

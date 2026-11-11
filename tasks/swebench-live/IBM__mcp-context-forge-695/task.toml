@@ -1,0 +1,61 @@
+id = "IBM__mcp-context-forge-695"
+image = "starryzhang/sweb.eval.x86_64.ibm_1776_mcp-context-forge-695"
+workdir = "/testbed"
+test_cmd = "bash .swebench_live/run.sh"
+timeout_s = 1800
+
+statement = '''
+[BUG]: Enhanced Validation Missing in GatewayCreate
+### Issue: Enhanced Validation Missing in GatewayCreate
+**Description**: The enhanced validation for multi-headers (header key format validation and 100-header limit) is only implemented in GatewayUpdate but missing in GatewayCreate.
+
+**Current State**:
+- GatewayUpdate has comprehensive validation (lines 2084-2126 in mcpgateway/schemas.py)
+- GatewayCreate has basic validation (lines 1901-1918 in mcpgateway/schemas.py)
+
+**Impact**: 
+- Users can create gateways with invalid header keys via create endpoint
+- Users can create gateways with >100 headers via create endpoint
+- Inconsistent behavior between create and update operations
+
+**Fix Required**:
+1. Copy enhanced validation logic from GatewayUpdate._process_auth_fields() to GatewayCreate._process_auth_fields()
+2. Add header key format validation: if not all(c.isalnum() or c in "-_" for c in key.replace(" ", ""))
+3. Add excessive headers check: if len(header_dict) > 100
+4. Add duplicate key warning with logging
+
+**Files to Modify**:
+- mcpgateway/schemas.py (lines 1904-1909)
+
+**Test Coverage**:
+- Add test cases to tests/unit/mcpgateway/test_multi_auth_headers.py for:
+  - Invalid header key format in create
+  - Excessive headers (>100) in create
+  - Duplicate key handling in create
+
+---
+
+## Priority: VERY LOW - UI/UX Polish
+
+### Issue: JavaScript Console Errors
+**Description**: Minor JavaScript issues in admin interface.
+
+**Files**: mcpgateway/static/admin.js
+- Line 6432: Changed showNotification to console.error - consider implementing proper notification system
+- Consider adding user-friendly error messages for header validation failures
+
+**Impact**: Very Low - functionality works, just less polished UX
+**Action**: Implement proper notification system for admin UI
+'''
+
+[swebench_live]
+instance_id = "IBM__mcp-context-forge-695"
+repo = "IBM/mcp-context-forge"
+pull_number = "695"
+base_commit = "3be2628e5b816a614e47f40cabc093296ab8eec0"
+created_at = "2025-08-09T22:12:30"
+docker_image = "starryzhang/sweb.eval.x86_64.ibm_1776_mcp-context-forge-695"
+test_cmds = ["pytest -rA"]
+fail_to_pass = 5
+pass_to_pass = 1393
+image_gb_compressed = 0.975

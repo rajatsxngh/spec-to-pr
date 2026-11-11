@@ -1,0 +1,10 @@
+{
+ "FAIL_TO_PASS": [
+  "tests/test_osmnx.py::test_features@group3"
+ ],
+ "PASS_TO_PASS": [
+  "tests/test_osmnx.py::test_logging@group1",
+  "tests/test_osmnx.py::test_exceptions@group1",
+  "tests/test_osmnx.py::test_graph_from@group2"
+ ]
+}

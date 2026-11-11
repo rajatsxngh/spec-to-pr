@@ -13,7 +13,7 @@ from .agent import run_agent
 from .config import Budget, ModelSettings, RunConfig, SandboxLimits
 from .models import AnthropicModel
 from .pricing import price_for
-from .sandbox import DEFAULT_IMAGE, DockerSandbox, LocalSandbox
+from .sandbox import DEFAULT_IMAGE, DockerSandbox, LocalSandbox, SandboxError
 
 app = typer.Typer(add_completion=False, help="Spec-to-PR coding-agent harness.")
 
@@ -184,15 +184,24 @@ class _RepoTask:
     """Adapts a repo root to the task shape the sandbox factory expects."""
 
     def __init__(self, root: Path):
-        self.repo, self.image, self.commit = root, None, None
+        self.repo, self.image, self.commit, self.workdir = root, None, None, None
 
 
 def _sandbox_factory(kind: str, image: str, limits: SandboxLimits):
     if kind == "docker":
-        return lambda task: DockerSandbox(task.repo, limits, image=task.image or image, commit=task.commit)
+        def docker(task):
+            if task.workdir:  # the image already holds the repo (SWE-bench Live tasks)
+                return DockerSandbox(None, limits, image=task.image, commit=task.commit, workdir=task.workdir)
+            return DockerSandbox(task.repo, limits, image=task.image or image, commit=task.commit)
+        return docker
     if kind == "local":
         typer.secho("Warning: local sandbox runs agent commands directly on this machine.", fg="yellow", err=True)
-        return lambda task: LocalSandbox(task.repo, limits, commit=task.commit)
+
+        def local(task):
+            if task.workdir:
+                raise SandboxError(f"{task.id} runs in its own Docker image; use --sandbox docker")
+            return LocalSandbox(task.repo, limits, commit=task.commit)
+        return local
     raise typer.BadParameter("--sandbox must be docker or local")
 
 
@@ -329,6 +338,84 @@ def validate_tasks(
             typer.echo((v.solution_output or v.base_output)[-1500:])
     typer.echo(f"{len(taskset.tasks) - bad} of {len(taskset.tasks)} tasks valid ({taskset.version}, hash {taskset.content_hash})")
     raise typer.Exit(1 if bad else 0)
+
+
+@app.command("import-swebench-live")
+def import_swebench_live(
+    out: Path = typer.Option(Path("tasks/swebench-live"), help="Task set directory (appended to if it exists)."),
+    limit: int = typer.Option(30, help="Stop once the set holds this many tasks."),
+    since: str = typer.Option("2025-06-01", help="Only instances created on or after this date (YYYY-MM-DD)."),
+    split: str = typer.Option("full", help="Dataset split: full, test, lite or verified."),
+    source: Optional[Path] = typer.Option(None, exists=True, dir_okay=False,
+                                          help="Read instances from a local JSONL file instead of Hugging Face."),
+    max_image_gb: float = typer.Option(1.5, help="Skip images larger than this on Docker Hub (compressed)."),
+    per_repo: int = typer.Option(2, help="At most this many tasks from one repository."),
+    max_validate_minutes: float = typer.Option(15.0, help="Drop tasks whose validation takes longer."),
+    validate: bool = typer.Option(True, help="Pull each image and keep the task only if it validates."),
+    remove_images: bool = typer.Option(False, help="Remove each image after validating it (re-pulled at eval time)."),
+    version: str = typer.Option("swebench-live-v1", help="Task set version written to taskset.toml."),
+    timeout_s: int = typer.Option(1800, help="Per-task test timeout."),
+) -> None:
+    """Import recent SWE-bench Live instances as tasks that run in each instance's own Docker image."""
+    from . import swebench_live as swl
+    from .tasks import load_task, validate_task
+
+    import sys
+
+    for stream in (sys.stdout, sys.stderr):  # problem statements and test logs hold any Unicode
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
+    rules = swl.Rules(since=since, max_image_gb=max_image_gb, per_repo=per_repo)
+    if source:
+        instances = sorted(swl.load_jsonl(source), key=lambda i: str(i.get("created_at", "")), reverse=True)
+    else:
+        instances = swl.fetch_instances(since, split=split)
+    size_of = swl.image_size_gb
+    limits = SandboxLimits()
+    make = _sandbox_factory("docker", DEFAULT_IMAGE, limits)
+
+    def check(task_dir: Path) -> tuple[bool, str]:
+        v = validate_task(load_task(task_dir), make)
+        detail = f"fails_on_base={v.fails_on_base} passes_with_solution={v.passes_with_solution}"
+        if not v.ok:
+            out = v.solution_output if v.fails_on_base else v.base_output
+            keys = ("SWE-bench Live grade", "FAIL_TO_PASS", "PASS_TO_PASS", "tests found", "did not apply")
+            summary = [ln.strip() for ln in out.splitlines() if ln.strip().startswith(keys)][:8]
+            detail += "; " + " | ".join(summary or [out.strip()[-300:]])
+        return v.ok, detail
+
+    def pull(image: str) -> tuple[float, float | None]:
+        t0 = time.monotonic()
+        proc = subprocess.run(["docker", "pull", "-q", image], capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise SandboxError(f"docker pull {image} failed: {proc.stderr.strip()[-500:]}")
+        size = subprocess.run(["docker", "image", "inspect", "--format", "{{.Size}}", image],
+                              capture_output=True, text=True).stdout.strip()
+        return round(time.monotonic() - t0, 1), (int(size) / 1e9 if size.isdigit() else None)
+
+    def remove(image: str) -> None:
+        subprocess.run(["docker", "image", "rm", "-f", image], capture_output=True)
+
+    typer.echo(f"Importing SWE-bench Live ({split}, since {since}) into {out}, up to {limit} tasks")
+    t0 = time.monotonic()
+    outcomes = swl.import_tasks(
+        instances, out, rules, limit, version, size_of,
+        validate=check if validate else None,
+        prepare=pull if validate else None,
+        cleanup=remove,
+        max_validate_s=max_validate_minutes * 60,
+        timeout_s=timeout_s,
+        log=typer.echo,
+    )
+    if remove_images:
+        for o in outcomes:
+            if o.accepted:
+                remove(swl.load_instance_image(out, o.instance_id))
+    kept = [o for o in outcomes if o.accepted]
+    tried = [o for o in outcomes if o.validate_s is not None or o.pull_s is not None]
+    typer.echo(f"Added {len(kept)} task(s); {len(tried) - len(kept)} failed validation; "
+               f"{len(outcomes) - len(tried)} skipped by the selection rules; {time.monotonic() - t0:.0f}s.")
+    typer.echo(f"Task set: {out / 'taskset.toml'} ({len(swl.existing_ids(out))} tasks)")
 
 
 @app.command("build-image")

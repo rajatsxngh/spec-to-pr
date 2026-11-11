@@ -1,0 +1,89 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index f02766e4..2ec1b8b6 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -26,6 +26,7 @@ Don't forget to remove deprecated code on each major release!
+ 
+ - This repository has been transferred out of Jazzband due to logistical concerns.
+ - Improve error message for missing database tools (`pg_dump`, `mysqldump`, etc.) to provide guidance instead of generic "No such file or directory" errors.
++- Changed default SQLite connector from `SqliteConnector` to `SqliteBackupConnector` to adhere to best practices.
+ 
+ ### Removed
+ 
+diff --git a/dbbackup/db/base.py b/dbbackup/db/base.py
+index b025e369..2bbec951 100644
+--- a/dbbackup/db/base.py
++++ b/dbbackup/db/base.py
+@@ -20,7 +20,7 @@
+ 
+ DEFAULT_CONNECTOR = "dbbackup.db.django.DjangoConnector"
+ CONNECTOR_MAPPING = {
+-    "django.db.backends.sqlite3": "dbbackup.db.sqlite.SqliteConnector",
++    "django.db.backends.sqlite3": "dbbackup.db.sqlite.SqliteBackupConnector",
+     "django.db.backends.mysql": "dbbackup.db.mysql.MysqlDumpConnector",
+     "django.db.backends.postgresql": "dbbackup.db.postgresql.PgDumpBinaryConnector",
+     "django.db.backends.postgresql_psycopg2": "dbbackup.db.postgresql.PgDumpBinaryConnector",
+@@ -28,12 +28,12 @@
+     "djongo": "dbbackup.db.mongodb.MongoDumpConnector",
+     "django.contrib.gis.db.backends.postgis": "dbbackup.db.postgresql.PgDumpGisConnector",
+     "django.contrib.gis.db.backends.mysql": "dbbackup.db.mysql.MysqlDumpConnector",
+-    "django.contrib.gis.db.backends.spatialite": "dbbackup.db.sqlite.SqliteConnector",
++    "django.contrib.gis.db.backends.spatialite": "dbbackup.db.sqlite.SqliteBackupConnector",
+     "django_prometheus.db.backends.postgresql": "dbbackup.db.postgresql.PgDumpBinaryConnector",
+-    "django_prometheus.db.backends.sqlite3": "dbbackup.db.sqlite.SqliteConnector",
++    "django_prometheus.db.backends.sqlite3": "dbbackup.db.sqlite.SqliteBackupConnector",
+     "django_prometheus.db.backends.mysql": "dbbackup.db.mysql.MysqlDumpConnector",
+     "django_prometheus.db.backends.postgis": "dbbackup.db.postgresql.PgDumpGisConnector",
+-    "django_s3_sqlite": "dbbackup.db.sqlite.SqliteConnector",
++    "django_s3_sqlite": "dbbackup.db.sqlite.SqliteBackupConnector",
+ }
+ 
+ if settings.CUSTOM_CONNECTOR_MAPPING:
+diff --git a/docs/src/databases.md b/docs/src/databases.md
+index 2ed25476..2d637061 100644
+--- a/docs/src/databases.md
++++ b/docs/src/databases.md
+@@ -36,11 +36,11 @@ All connectors have the following parameters:
+ 
+ | Setting   | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Default                     |
+ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+-| CONNECTOR | Absolute path to connector class. Defaults by engine: `dbbackup.db.sqlite.SqliteConnector` (sqlite3), `dbbackup.db.mysql.MysqlDumpConnector` (mysql), `dbbackup.db.postgresql.PgDumpConnector` (postgresql), `dbbackup.db.postgresql.PgDumpGisConnector` (postgis), `dbbackup.db.mongodb.MongoDumpConnector` (django_mongodb_engine), `dbbackup.db.django.DjangoConnector` (fallback / any unmapped). Prometheus wrappers are also supported mapping to the same connectors. | Auto-detected from `ENGINE` |
++| CONNECTOR | Absolute path to connector class. Defaults by engine: `dbbackup.db.sqlite.SqliteBackupConnector` (sqlite3), `dbbackup.db.mysql.MysqlDumpConnector` (mysql), `dbbackup.db.postgresql.PgDumpConnector` (postgresql), `dbbackup.db.postgresql.PgDumpGisConnector` (postgis), `dbbackup.db.mongodb.MongoDumpConnector` (django_mongodb_engine), `dbbackup.db.django.DjangoConnector` (fallback / any unmapped). Prometheus wrappers are also supported mapping to the same connectors. | Auto-detected from `ENGINE` |
+ | EXCLUDE   | List of table names to exclude from dump (may be unsupported for raw file copy snapshot approaches). Example below.                                                                                                                                                                                                                                                                                                                                                          | None                        |
+ | EXTENSION | File extension used for the generated dump archive.                                                                                                                                                                                                                                                                                                                                                                                                                          | `dump`                      |
+ 
+-All supported built-in connectors are described in more detail below. Following database wrappers from `django-prometheus` are supported: `django_prometheus.db.backends.postgresql` (-> `PgDumpBinaryConnector`), `django_prometheus.db.backends.sqlite3` (-> `SqliteConnector`), `django_prometheus.db.backends.mysql` (-> `MysqlDumpConnector`), `django_prometheus.db.backends.postgis` (-> `PgDumpGisConnector`).
++All supported built-in connectors are described in more detail below. Following database wrappers from `django-prometheus` are supported: `django_prometheus.db.backends.postgresql` (-> `PgDumpBinaryConnector`), `django_prometheus.db.backends.sqlite3` (-> `SqliteBackupConnector`), `django_prometheus.db.backends.mysql` (-> `MysqlDumpConnector`), `django_prometheus.db.backends.postgis` (-> `PgDumpGisConnector`).
+ 
+ Example for `EXCLUDE` usage:
+ 
+@@ -81,22 +81,23 @@ These connectors are provided by default and are designed to work with specific
+ 
+ ### SQLite
+ 
+-#### SqliteConnector
++#### SqliteBackupConnector
+ 
+-It is in pure Python and is similar to the Sqlite `.dump` command for creating a
+-SQL dump.
++The `dbbackup.db.sqlite.SqliteBackupConnector` makes a copy of the SQLite database file using the `.backup` command, which is safe to execute while the database has ongoing/active connections.
+ 
+ This is the default connector for SQLite databases.
+ 
+-#### SqliteBackupConnector
++#### SqliteConnector
++
++It is in pure Python and is similar to the Sqlite `.dump` command for creating a SQL dump.
+ 
+-The `dbbackup.db.sqlite.SqliteBackupConnector` makes a copy of the SQLite database file using the `.backup` command, which is safe to execute while the database has ongoing/active connections. Additionally, it supports dumping in-memory databases by construction.
++This connector can be used to restore a backup to an existing (dirty) database due to it's generation of raw SQL statements. However, that is generally not recommended and can lead to unexpected results depending on your schema.
+ 
+ #### SqliteCPConnector
+ 
+ The `dbbackup.db.sqlite.SqliteCPConnector` connector can be used to make a simple raw copy of your database file, like a snapshot.
+ 
+-In-memory databases aren't dumpable with it. Since it works by copying the database file directly, it is not suitable for databases that are have active connections.
++In-memory databases are **not** dumpable with it. Since it works by copying the database file directly, it is not suitable for databases that are have active connections.
+ 
+ ### MySQL
+ 

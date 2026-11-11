@@ -1,0 +1,315 @@
+diff --git a/.ansible-lint b/.ansible-lint
+index bbc1dbe90..399a7052a 100644
+--- a/.ansible-lint
++++ b/.ansible-lint
+@@ -4,6 +4,7 @@ exclude_paths:
+   - .github/
+   - tests/legacy-lxd/
+   - tests/
++  - files/cloud-init/  # Cloud-init files have special format requirements
+ 
+ skip_list:
+   - 'package-latest'  # Package installs should not use latest - needed for updates
+diff --git a/.yamllint b/.yamllint
+index 3809f6a88..916c70955 100644
+--- a/.yamllint
++++ b/.yamllint
+@@ -1,6 +1,11 @@
+ ---
+ extends: default
+ 
++# Cloud-init files must be excluded from normal YAML rules
++# The #cloud-config header cannot have a space and cannot have --- document start
++ignore: |
++  files/cloud-init/
++
+ rules:
+   line-length:
+     max: 160
+diff --git a/config.cfg b/config.cfg
+index 2116b0473..06480218c 100644
+--- a/config.cfg
++++ b/config.cfg
+@@ -135,11 +135,11 @@ wireguard_network_ipv4: 10.49.0.0/16
+ wireguard_network_ipv6: 2001:db8:a160::/48
+ 
+ # Randomly generated IP address for the local dns resolver
+-local_service_ip: "{{ '172.16.0.1' | ipmath(1048573 | random(seed=algo_server_name + ansible_fqdn)) }}"
+-local_service_ipv6: "{{ 'fd00::1' | ipmath(1048573 | random(seed=algo_server_name + ansible_fqdn)) }}"
++local_service_ip: "{{ '172.16.0.1' | ansible.utils.ipmath(1048573 | random(seed=algo_server_name + ansible_fqdn)) }}"
++local_service_ipv6: "{{ 'fd00::1' | ansible.utils.ipmath(1048573 | random(seed=algo_server_name + ansible_fqdn)) }}"
+ 
+ # Hide sensitive data
+-no_log: true
++algo_no_log: true
+ 
+ congrats:
+   common: |
+diff --git a/files/cloud-init/README.md b/files/cloud-init/README.md
+new file mode 100644
+index 000000000..fc3337803
+--- /dev/null
++++ b/files/cloud-init/README.md
+@@ -0,0 +1,60 @@
++# Cloud-Init Files - Critical Format Requirements
++
++## ⚠️ CRITICAL WARNING ⚠️
++
++The files in this directory have **STRICT FORMAT REQUIREMENTS** that must not be changed by linters or automated formatting tools.
++
++## Cloud-Config Header Format
++
++The first line of `base.yml` **MUST** be exactly:
++```
++#cloud-config
++```
++
++### ❌ DO NOT CHANGE TO:
++- `# cloud-config` (space after #) - **BREAKS CLOUD-INIT PARSING**
++- Add YAML document start `---` - **NOT ALLOWED IN CLOUD-INIT**
++
++### Why This Matters
++
++Cloud-init's YAML parser expects the exact string `#cloud-config` as the first line. Any deviation causes:
++
++1. **Complete parsing failure** - All directives are skipped
++2. **SSH configuration not applied** - Servers remain on port 22 instead of 4160
++3. **Deployment timeouts** - Ansible cannot connect to configure the VPN
++4. **DigitalOcean specific impact** - Other providers may be more tolerant
++
++## Historical Context
++
++- **Working**: All versions before PR #14775 (August 2025)  
++- **Broken**: PR #14775 "Apply ansible-lint improvements" added space by mistake
++- **Fixed**: PR #14801 restored correct format + added protections
++
++See GitHub issue #14800 for full technical details.
++
++## Linter Configuration
++
++These files are **excluded** from:
++- `yamllint` (`.yamllint` config)
++- `ansible-lint` (`.ansible-lint` config)
++
++This prevents automated tools from "fixing" the format and breaking deployments.
++
++## Template Variables
++
++The cloud-init files use Jinja2 templating:
++- `{{ ssh_port }}` - Configured SSH port (typically 4160)
++- `{{ lookup('file', '{{ SSH_keys.public }}') }}` - SSH public key
++
++## Editing Guidelines
++
++1. **Never** run automated formatters on these files
++2. **Test immediately** after any changes with real deployments
++3. **Check yamllint warnings** are expected (missing space in comment, missing ---)
++4. **Verify first line** remains exactly `#cloud-config`
++
++## References
++
++- [Cloud-init documentation](https://cloudinit.readthedocs.io/)
++- [Cloud-config examples](https://cloudinit.readthedocs.io/en/latest/reference/examples.html)
++- [GitHub Issue #14800](https://github.com/trailofbits/algo/issues/14800)
+\ No newline at end of file
+diff --git a/files/cloud-init/base.yml b/files/cloud-init/base.yml
+index b631097c6..73103a986 100644
+--- a/files/cloud-init/base.yml
++++ b/files/cloud-init/base.yml
+@@ -1,4 +1,8 @@
+-# cloud-config
++#cloud-config
++# CRITICAL: The above line MUST be exactly "#cloud-config" (no space after #)
++# This is required by cloud-init's YAML parser. Adding a space breaks parsing
++# and causes all cloud-init directives to be skipped, resulting in SSH timeouts.
++# See: https://github.com/trailofbits/algo/issues/14800
+ output: {all: '| tee -a /var/log/cloud-init-output.log'}
+ 
+ package_update: true
+@@ -21,7 +25,7 @@ users:
+ write_files:
+   - path: /etc/ssh/sshd_config
+     content: |
+-      {{ lookup('template', 'files/cloud-init/sshd_config') | indent(width=6) }}
++{{ lookup('template', 'files/cloud-init/sshd_config') | indent(width=6, first=True) }}
+ 
+ runcmd:
+   - set -x
+diff --git a/main.yml b/main.yml
+index bea2af9db..62c056972 100644
+--- a/main.yml
++++ b/main.yml
+@@ -17,7 +17,7 @@
+ 
+     - name: Ensure the requirements installed
+       debug:
+-        msg: "{{ '' | ipaddr }}"
++        msg: "{{ '' | ansible.utils.ipaddr }}"
+       ignore_errors: true
+       no_log: true
+       register: ipaddr
+diff --git a/roles/cloud-digitalocean/tasks/main.yml b/roles/cloud-digitalocean/tasks/main.yml
+index 952b4fca3..f900426f4 100644
+--- a/roles/cloud-digitalocean/tasks/main.yml
++++ b/roles/cloud-digitalocean/tasks/main.yml
+@@ -21,7 +21,7 @@
+     unique_name: true
+     ipv6: true
+     ssh_keys: "{{ do_ssh_key.data.ssh_key.id }}"
+-    user_data: "{{ lookup('template', 'files/cloud-init/base.yml') }}"
++    user_data: "{{ lookup('template', 'files/cloud-init/base.yml') | string }}"
+     tags:
+       - Environment:Algo
+   register: digital_ocean_droplet
+diff --git a/roles/common/defaults/main.yml b/roles/common/defaults/main.yml
+index bf294727d..c383d37b4 100644
+--- a/roles/common/defaults/main.yml
++++ b/roles/common/defaults/main.yml
+@@ -4,6 +4,6 @@ aip_supported_providers:
+   - digitalocean
+ snat_aipv4: false
+ ipv6_default: "{{ ansible_default_ipv6.address + '/' + ansible_default_ipv6.prefix }}"
+-ipv6_subnet_size: "{{ ipv6_default | ipaddr('size') }}"
++ipv6_subnet_size: "{{ ipv6_default | ansible.utils.ipaddr('size') }}"
+ ipv6_egress_ip: >-
+-  {{ (ipv6_default | next_nth_usable(15 | random(seed=algo_server_name + ansible_fqdn))) + '/124' if ipv6_subnet_size|int > 1 else ipv6_default }}
++  {{ (ipv6_default | ansible.utils.next_nth_usable(15 | random(seed=algo_server_name + ansible_fqdn))) + '/124' if ipv6_subnet_size|int > 1 else ipv6_default }}
+diff --git a/roles/common/tasks/aip/main.yml b/roles/common/tasks/aip/main.yml
+index e644d9d66..c2d2d30bc 100644
+--- a/roles/common/tasks/aip/main.yml
++++ b/roles/common/tasks/aip/main.yml
+@@ -11,5 +11,5 @@
+ 
+ - name: Verify SNAT IPv4 found
+   assert:
+-    that: snat_aipv4 | ipv4
++    that: snat_aipv4 | ansible.utils.ipv4
+     msg: The SNAT IPv4 address not found. Cannot proceed with the alternative ingress ip.
+diff --git a/roles/common/tasks/ubuntu.yml b/roles/common/tasks/ubuntu.yml
+index 9eb92dc3e..6ecdc9944 100644
+--- a/roles/common/tasks/ubuntu.yml
++++ b/roles/common/tasks/ubuntu.yml
+@@ -40,6 +40,7 @@
+ 
+ - name: Disable MOTD on login and SSHD
+   replace: dest="{{ item.file }}" regexp="{{ item.regexp }}" replace="{{ item.line }}"
++  become: true
+   with_items:
+     - { regexp: ^session.*optional.*pam_motd.so.*, line: "# MOTD DISABLED", file: /etc/pam.d/login }
+     - { regexp: ^session.*optional.*pam_motd.so.*, line: "# MOTD DISABLED", file: /etc/pam.d/sshd }
+diff --git a/roles/common/templates/rules.v6.j2 b/roles/common/templates/rules.v6.j2
+index 41e45d7ab..b2f6f20c2 100644
+--- a/roles/common/templates/rules.v6.j2
++++ b/roles/common/templates/rules.v6.j2
+@@ -35,7 +35,7 @@ COMMIT
+ -A PREROUTING --in-interface {{ ansible_default_ipv6['interface'] }} -p udp --dport {{ wireguard_port_avoid }} -j REDIRECT --to-port {{ wireguard_port_actual }}
+ {% endif %}
+ # Allow traffic from the VPN network to the outside world, and replies
+--A POSTROUTING -s {{ subnets|join(',') }} -m policy --pol none --dir out {{ '-j SNAT --to ' + ipv6_egress_ip | ipaddr('address') if alternative_ingress_ip else '-j MASQUERADE' }}
++-A POSTROUTING -s {{ subnets|join(',') }} -m policy --pol none --dir out {{ '-j SNAT --to ' + ipv6_egress_ip | ansible.utils.ipaddr('address') if alternative_ingress_ip else '-j MASQUERADE' }}
+ 
+ COMMIT
+ 
+diff --git a/roles/ssh_tunneling/tasks/main.yml b/roles/ssh_tunneling/tasks/main.yml
+index 8abdd6233..f9680f3af 100644
+--- a/roles/ssh_tunneling/tasks/main.yml
++++ b/roles/ssh_tunneling/tasks/main.yml
+@@ -32,6 +32,7 @@
+       user:
+         name: "{{ item }}"
+         group: algo
++        groups: algo
+         home: /var/jail/{{ item }}
+         createhome: true
+         generate_ssh_key: false
+@@ -66,7 +67,7 @@
+             passphrase: "{{ p12_export_password }}"
+             cipher: auto
+             force: false
+-          no_log: "{{ no_log|bool }}"
++          no_log: "{{ algo_no_log|bool }}"
+           when: not item.stat.exists
+           with_items: "{{ privatekey.results }}"
+           register: openssl_privatekey
+@@ -78,7 +79,7 @@
+             privatekey_passphrase: "{{ p12_export_password }}"
+             format: OpenSSH
+             force: true
+-          no_log: "{{ no_log|bool }}"
++          no_log: "{{ algo_no_log|bool }}"
+           when: item.changed
+           with_items: "{{ openssl_privatekey.results }}"
+ 
+diff --git a/roles/strongswan/tasks/client_configs.yml b/roles/strongswan/tasks/client_configs.yml
+index 083e5d75a..08fc24cff 100644
+--- a/roles/strongswan/tasks/client_configs.yml
++++ b/roles/strongswan/tasks/client_configs.yml
+@@ -23,7 +23,7 @@
+   with_together:
+     - "{{ users }}"
+     - "{{ PayloadContent.results }}"
+-  no_log: "{{ no_log|bool }}"
++  no_log: "{{ algo_no_log|bool }}"
+ 
+ - name: Build the client ipsec config file
+   template:
+diff --git a/roles/wireguard/defaults/main.yml b/roles/wireguard/defaults/main.yml
+index 45c402911..49e88f9ad 100644
+--- a/roles/wireguard/defaults/main.yml
++++ b/roles/wireguard/defaults/main.yml
+@@ -14,8 +14,8 @@ wireguard_dns_servers: >-
+   not loop.last %},{% endif %}{% endfor %}{% endif %}
+   {% endif %}
+ wireguard_client_ip: >-
+-  {{ wireguard_network_ipv4 | ipmath(index|int+2) }}
+-  {{ ',' + wireguard_network_ipv6 | ipmath(index|int+2) if ipv6_support else '' }}
++  {{ wireguard_network_ipv4 | ansible.utils.ipmath(index|int+2) }}
++  {{ ',' + wireguard_network_ipv6 | ansible.utils.ipmath(index|int+2) if ipv6_support else '' }}
+ wireguard_server_ip: >-
+-  {{ wireguard_network_ipv4 | ipaddr('1') }}
+-  {{ ',' + wireguard_network_ipv6 | ipaddr('1') if ipv6_support else '' }}
++  {{ wireguard_network_ipv4 | ansible.utils.ipaddr('1') }}
++  {{ ',' + wireguard_network_ipv6 | ansible.utils.ipaddr('1') if ipv6_support else '' }}
+diff --git a/roles/wireguard/tasks/keys.yml b/roles/wireguard/tasks/keys.yml
+index e9ce8a3ac..e8bb99ff6 100644
+--- a/roles/wireguard/tasks/keys.yml
++++ b/roles/wireguard/tasks/keys.yml
+@@ -23,7 +23,7 @@
+         dest: "{{ wireguard_pki_path }}/private/{{ item['item'] }}"
+         content: "{{ item['stdout'] }}"
+         mode: "0600"
+-      no_log: "{{ no_log|bool }}"
++      no_log: "{{ algo_no_log|bool }}"
+       when: item.changed
+       with_items: "{{ wg_genkey['results'] }}"
+       delegate_to: localhost
+@@ -62,7 +62,7 @@
+         dest: "{{ wireguard_pki_path }}/preshared/{{ item['item'] }}"
+         content: "{{ item['stdout'] }}"
+         mode: "0600"
+-      no_log: "{{ no_log|bool }}"
++      no_log: "{{ algo_no_log|bool }}"
+       when: item.changed
+       with_items: "{{ wg_genpsk['results'] }}"
+       delegate_to: localhost
+@@ -95,7 +95,7 @@
+     dest: "{{ wireguard_pki_path }}/public/{{ item['item'] }}"
+     content: "{{ item['stdout'] }}"
+     mode: "0600"
+-  no_log: "{{ no_log|bool }}"
++  no_log: "{{ algo_no_log|bool }}"
+   with_items: "{{ wg_pubkey['results'] }}"
+   delegate_to: localhost
+   become: false
+diff --git a/roles/wireguard/templates/server.conf.j2 b/roles/wireguard/templates/server.conf.j2
+index 1baad8332..4f00e81d9 100644
+--- a/roles/wireguard/templates/server.conf.j2
++++ b/roles/wireguard/templates/server.conf.j2
+@@ -12,6 +12,6 @@ SaveConfig = false
+ # {{ u }}
+ PublicKey = {{ lookup('file', wireguard_pki_path + '/public/' + u) }}
+ PresharedKey = {{ lookup('file', wireguard_pki_path + '/preshared/' + u) }}
+-AllowedIPs = {{ wireguard_network_ipv4 | ipmath(index|int+1) | ipv4('address') }}/32{{ ',' + wireguard_network_ipv6 | ipmath(index|int+1) | ipv6('address') + '/128' if ipv6_support else '' }}
++AllowedIPs = {{ wireguard_network_ipv4 | ansible.utils.ipmath(index|int+1) | ansible.utils.ipv4('address') }}/32{{ ',' + wireguard_network_ipv6 | ansible.utils.ipmath(index|int+1) | ansible.utils.ipv6('address') + '/128' if ipv6_support else '' }}
+ {% endif %}
+ {% endfor %}

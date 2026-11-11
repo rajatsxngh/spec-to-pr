@@ -1,0 +1,2 @@
+tests/input_data/osm_schema.xsd
+tests/input_data/planet_10.068,48.135_10.071,48.137.osm

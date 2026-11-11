@@ -1,0 +1,84 @@
+id = "sissbruecker__linkding-1153"
+image = "starryzhang/sweb.eval.x86_64.sissbruecker_1776_linkding-1153"
+workdir = "/testbed"
+test_cmd = "bash .swebench_live/run.sh"
+timeout_s = 1800
+
+statement = '''
+Malformed href in Netscape HTML file results in import error
+I was importing a very large export of HTML bookmarks, and it was failing with the vague UI error "An error occurred during bookmark import."
+
+<details>
+<summary>The logs contained this:</summary>
+
+```
+Jul 29 13:29:07 2025-07-29 17:29:07,941 ERROR Unexpected error during bookmark import
+Jul 29 13:29:07 Traceback (most recent call last):
+Jul 29 13:29:07 File "/app/code/venv/lib/python3.12/site-packages/django/db/backends/utils.py", line 105, in _execute
+Jul 29 13:29:07 return self.cursor.execute(sql, params)
+Jul 29 13:29:07 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Jul 29 13:29:07 psycopg2.errors.StringDataRightTruncation: value too long for type character varying(64)
+Jul 29 13:29:07 2025-07-29T17:29:07Z
+Jul 29 13:29:07 2025-07-29T17:29:07Z
+Jul 29 13:29:07 The above exception was the direct cause of the following exception:
+Jul 29 13:29:07 2025-07-29T17:29:07Z
+Jul 29 13:29:07 Traceback (most recent call last):
+Jul 29 13:29:07 File "/app/code/bookmarks/views/settings.py", line 213, in bookmark_import
+Jul 29 13:29:07 result = importer.import_netscape_html(content, request.user, import_options)
+Jul 29 13:29:07 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Jul 29 13:29:07 File "/app/code/bookmarks/services/importer.py", line 74, in import_netscape_html
+Jul 29 13:29:07 _create_missing_tags(netscape_bookmarks, user)
+Jul 29 13:29:07 File "/app/code/bookmarks/services/importer.py", line 106, in _create_missing_tags
+Jul 29 13:29:07 Tag.objects.bulk_create(tags_to_create)
+Jul 29 13:29:07 File "/app/code/venv/lib/python3.12/site-packages/django/db/models/manager.py", line 87, in manager_method
+Jul 29 13:29:07 return getattr(self.get_queryset(), name)(*args, **kwargs)
+Jul 29 13:29:07 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Jul 29 13:29:07 File "/app/code/venv/lib/python3.12/site-packages/django/db/models/query.py", line 835, in bulk_create
+Jul 29 13:29:07 returned_columns = self._batched_insert(
+Jul 29 13:29:07 ^^^^^^^^^^^^^^^^^^^^^
+Jul 29 13:29:07 File "/app/code/venv/lib/python3.12/site-packages/django/db/models/query.py", line 1875, in _batched_insert
+Jul 29 13:29:07 self._insert(
+Jul 29 13:29:07 File "/app/code/venv/lib/python3.12/site-packages/django/db/models/query.py", line 1847, in _insert
+Jul 29 13:29:07 return query.get_compiler(using=using).execute_sql(returning_fields)
+Jul 29 13:29:07 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Jul 29 13:29:07 File "/app/code/venv/lib/python3.12/site-packages/django/db/models/sql/compiler.py", line 1836, in execute_sql
+Jul 29 13:29:07 cursor.execute(sql, params)
+Jul 29 13:29:07 File "/app/code/venv/lib/python3.12/site-packages/django/db/backends/utils.py", line 79, in execute
+Jul 29 13:29:07 return self._execute_with_wrappers(
+Jul 29 13:29:07 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Jul 29 13:29:07 File "/app/code/venv/lib/python3.12/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+Jul 29 13:29:07 return executor(sql, params, many, context)
+Jul 29 13:29:07 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Jul 29 13:29:07 File "/app/code/venv/lib/python3.12/site-packages/django/db/backends/utils.py", line 100, in _execute
+Jul 29 13:29:07 with self.db.wrap_database_errors:
+Jul 29 13:29:07 File "/app/code/venv/lib/python3.12/site-packages/django/db/utils.py", line 91, in __exit__
+Jul 29 13:29:07 raise dj_exc_value.with_traceback(traceback) from exc_value
+Jul 29 13:29:07 File "/app/code/venv/lib/python3.12/site-packages/django/db/backends/utils.py", line 105, in _execute
+Jul 29 13:29:07 return self.cursor.execute(sql, params)
+Jul 29 13:29:07 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Jul 29 13:29:07 django.db.utils.DataError: value too long for type character varying(64)
+Jul 29 13:29:07 2025-07-29T17:29:07Z
+Jul 29 13:29:07 [pid: 18|app: 0|req: 294/570] 2601:189:8101:29b0:893e:c101:1365:8d09 () {70 vars in 1417 bytes} [Tue Jul 29 17:29:07 2025] POST /settings/import => generated 0 bytes in 60 msecs (HTTP/1.1 302) 10 headers in 516 bytes (1 switches on core 0)
+```
+</details>
+
+The culprit was this malformed URL in an href attribute:
+
+```html
+<DT><A HREF="http://:C" ADD_DATE="1394214280" PRIVATE="1" TOREAD="" TAGS="http://www.npr.org/blogs/health/2014/03/06/286786987/for-some-people-music-truly-doesnt-make-them-happy">[3 min read] Some People Don't Feel Anything (When They Listen To Music)</A>
+```
+
+Not sure how that got into my bookmarks, but it would be nice if Linkding handled this failure better.
+'''
+
+[swebench_live]
+instance_id = "sissbruecker__linkding-1153"
+repo = "sissbruecker/linkding"
+pull_number = "1153"
+base_commit = "5cc8c9c010175e9f438d9c1c31117b7ce735a46a"
+created_at = "2025-08-10T12:21:00"
+docker_image = "starryzhang/sweb.eval.x86_64.sissbruecker_1776_linkding-1153"
+test_cmds = ["pytest -rA"]
+fail_to_pass = 1
+pass_to_pass = 893
+image_gb_compressed = 0.744

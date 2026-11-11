@@ -1,0 +1,23 @@
+diff --git a/hypothesis-python/RELEASE.rst b/hypothesis-python/RELEASE.rst
+new file mode 100644
+index 0000000000..28c76d96fa
+--- /dev/null
++++ b/hypothesis-python/RELEASE.rst
+@@ -0,0 +1,4 @@
++RELEASE_TYPE: patch
++
++Fix a typo affecting pretty-printing of lambdas with complex default
++arguments.
+diff --git a/hypothesis-python/src/hypothesis/internal/lambda_sources.py b/hypothesis-python/src/hypothesis/internal/lambda_sources.py
+index 5cb1862a09..0c099183a0 100644
+--- a/hypothesis-python/src/hypothesis/internal/lambda_sources.py
++++ b/hypothesis-python/src/hypothesis/internal/lambda_sources.py
+@@ -86,7 +86,7 @@ def _function_key(f, *, bounded_size=False):
+         if len(consts_repr) > 48:
+             consts_repr = hashlib.sha384(consts_repr.encode()).digest()
+         if len(defaults_repr) > 48:
+-            defaults_repr = hashlib.sha384(consts_repr.encode()).digest()
++            defaults_repr = hashlib.sha384(defaults_repr.encode()).digest()
+     return (
+         consts_repr,
+         defaults_repr,

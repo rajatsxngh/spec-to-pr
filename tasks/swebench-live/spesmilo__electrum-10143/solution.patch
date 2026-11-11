@@ -1,0 +1,13 @@
+diff --git a/electrum/keystore.py b/electrum/keystore.py
+index 0408894c6fe8..340dcd41f55f 100644
+--- a/electrum/keystore.py
++++ b/electrum/keystore.py
+@@ -737,6 +737,8 @@ def watching_only_keystore(self):
+         return Old_KeyStore({'mpk': self.mpk})
+ 
+     def _get_hex_seed(self, password) -> str:
++        if not is_hex_str(self.seed) and password is None:
++            raise InvalidPassword()
+         hex_str = pw_decode(self.seed, password, version=self.pw_hash_version)
+         assert is_hex_str(hex_str), f"expected hex str, got {type(hex_str)} with {len(hex_str)=}"
+         return hex_str

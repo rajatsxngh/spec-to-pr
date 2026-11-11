@@ -1,0 +1,19 @@
+{
+ "IBM__mcp-context-forge-754": "fails_on_base=True passes_with_solution=False",
+ "IBM__mcp-context-forge-780": "fails_on_base=True passes_with_solution=False",
+ "PyPSA__PyPSA-1325": "fails_on_base=True passes_with_solution=False",
+ "astronomer__dag-factory-544": "fails_on_base=True passes_with_solution=False",
+ "aws-cloudformation__cfn-lint-4197": "fails_on_base=True passes_with_solution=False",
+ "awslabs__mcp-1154": "fails_on_base=True passes_with_solution=False",
+ "celery__celery-9853": "fails_on_base=True passes_with_solution=False",
+ "conan-io__conan-18832": "validation took 1728s > 900s",
+ "fsspec__filesystem_spec-1897": "fails_on_base=True passes_with_solution=False",
+ "gitpython-developers__GitPython-2062": "fails_on_base=True passes_with_solution=False",
+ "koxudaxi__datamodel-code-generator-2461": "fails_on_base=True passes_with_solution=False",
+ "koxudaxi__datamodel-code-generator-2467": "fails_on_base=True passes_with_solution=False",
+ "llamastack__llama-stack-3224": "fails_on_base=True passes_with_solution=False",
+ "pyinfra-dev__pyinfra-1413": "fails_on_base=True passes_with_solution=False",
+ "pypa__cibuildwheel-2541": "fails_on_base=True passes_with_solution=False",
+ "python-poetry__poetry-10487": "fails_on_base=True passes_with_solution=False",
+ "stanfordnlp__dspy-8566": "fails_on_base=True passes_with_solution=False"
+}

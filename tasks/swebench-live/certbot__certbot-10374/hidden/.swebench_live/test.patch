@@ -1,0 +1,101 @@
+diff --git a/acme/src/acme/_internal/tests/client_test.py b/acme/src/acme/_internal/tests/client_test.py
+index 885c6ac5b9a..7d8f44f9c9c 100644
+--- a/acme/src/acme/_internal/tests/client_test.py
++++ b/acme/src/acme/_internal/tests/client_test.py
+@@ -548,27 +548,38 @@ def test_renewal_time_with_renewal_info(self, dt_mock):
+ 
+     @mock.patch('acme.client.datetime')
+     def test_renewal_time_renewal_info_errors(self, dt_mock):
+-        utc_now = datetime.datetime(2025, 3, 15, tzinfo=datetime.timezone.utc)
+-        dt_mock.datetime.now.return_value = utc_now
++        def now(tzinfo=None):
++            return datetime.datetime(2025, 3, 15, tzinfo=tzinfo)
++        dt_mock.datetime.now.side_effect = now
++        dt_mock.timedelta = datetime.timedelta
++        dt_mock.timezone = datetime.timezone
++
+         self.client.directory = messages.Directory({
+             'renewalInfo': 'https://www.letsencrypt-demo.org/acme/renewal-info',
+         })
+-        # Failure to fetch the 'renewalInfo' URL should return None
+-        self.net.get.side_effect = requests.exceptions.RequestException
++        # Failure to fetch the 'renewalInfo' URL should raise an ARIError with the exception raised
++        # by self.net.get as the __cause__ and a Retry-After 6 hours in the future
++        expected_cause = requests.exceptions.RequestException
++        expected_retry_after = now() + datetime.timedelta(seconds=6 * 60 * 60)
++        self.net.get.side_effect = expected_cause
+ 
+         cert_pem = make_cert_for_renewal(
+             not_before=datetime.datetime(2025, 3, 12, 00, 00, 00),
+             not_after=datetime.datetime(2025, 3, 20, 00, 00, 00),
+         )
+-        t, _ = self.client.renewal_time(cert_pem)
+-        assert t == None
++        with pytest.raises(errors.ARIError) as exception_info:
++            self.client.renewal_time(cert_pem)
++        assert isinstance(exception_info.value.__cause__, expected_cause)
++        assert exception_info.value.retry_after == expected_retry_after
+ 
+         cert_pem = make_cert_for_renewal(
+             not_before=datetime.datetime(2025, 3, 12, 00, 00, 00),
+             not_after=datetime.datetime(2025, 3, 30, 00, 00, 00),
+         )
+-        t, _ = self.client.renewal_time(cert_pem)
+-        assert t == None
++        with pytest.raises(errors.ARIError) as exception_info:
++            self.client.renewal_time(cert_pem)
++        assert isinstance(exception_info.value.__cause__, expected_cause)
++        assert exception_info.value.retry_after == expected_retry_after
+ 
+     @mock.patch('acme.client.datetime')
+     def test_renewal_time_returns_retry_after(self, dt_mock):
+diff --git a/certbot/src/certbot/_internal/tests/renewal_test.py b/certbot/src/certbot/_internal/tests/renewal_test.py
+index 9ba3a35d4ed..cbe62aeeb36 100644
+--- a/certbot/src/certbot/_internal/tests/renewal_test.py
++++ b/certbot/src/certbot/_internal/tests/renewal_test.py
+@@ -10,6 +10,7 @@
+ import pytz
+ 
+ from acme import challenges
++from acme import errors as acme_errors
+ from certbot import configuration
+ from certbot import errors
+ from certbot._internal import storage
+@@ -440,8 +441,35 @@ def test_resilient_ari_directory_fetches(self, mock_renewal_time, mock_ocsp, moc
+         mock_ocsp.return_value = True
+ 
+         with mock.patch('certbot._internal.renewal.open', mock.mock_open(read_data=b'')):
+-            assert renewal.should_autorenew(self.config, mock_rc, acme_clients)
+-            assert mock_renewal_time.call_count == 0
++            with mock.patch('certbot._internal.renewal.logger') as mock_logger:
++                assert renewal.should_autorenew(self.config, mock_rc, acme_clients)
++        assert mock_renewal_time.call_count == 0
++        # Ensure we logged about skipping the ARI check and the underlying exception
++        assert any('ARI' in call.args[0] for call in mock_logger.warning.call_args_list)
++        assert any(call.kwargs.get('exc_info') for call in mock_logger.debug.call_args_list)
++
++
++    @mock.patch('certbot._internal.storage.RenewableCert.ocsp_revoked')
++    def test_resilient_ari_check(self, mock_ocsp):
++        from certbot._internal import renewal
++
++        mock_acme = mock.MagicMock()
++        ari_error = acme_errors.ARIError('some error', datetime.datetime.now())
++        ari_server = 'http://ari'
++        mock_acme.renewal_time.side_effect = ari_error
++        acme_clients = {}
++        acme_clients[ari_server] = mock_acme
++        mock_rc = mock.MagicMock()
++        mock_rc.server = ari_server
++        mock_rc.autorenewal_is_enabled.return_value = True
++        mock_ocsp.return_value = True
++
++        with mock.patch('certbot._internal.renewal.open', mock.mock_open(read_data=b'')):
++            with mock.patch('certbot._internal.renewal.logger') as mock_logger:
++                assert renewal.should_autorenew(self.config, mock_rc, acme_clients)
++        # Ensure we logged about skipping the ARI check and the underlying exception
++        assert any('ARI' in call.args[0] for call in mock_logger.warning.call_args_list)
++        assert any(call.kwargs.get('exc_info') for call in mock_logger.debug.call_args_list)
+ 
+ 
+ class RestoreRequiredConfigElementsTest(test_util.ConfigTestCase):

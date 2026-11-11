@@ -1,0 +1,43 @@
+id = "google__adk-python-2502"
+image = "starryzhang/sweb.eval.x86_64.google_1776_adk-python-2502"
+workdir = "/testbed"
+test_cmd = "bash .swebench_live/run.sh"
+timeout_s = 1800
+
+statement = '''
+adk deploy cloud_run fixes the Python version at 3.11, but some sample agents depend on Python 3.12.
+**Describe the bug**
+The data science agent from adk-samples depends on Python 3.12, but `adk deploy cloud_run` uses a hard-coded container template that uses Python 3.11. This leads to errors when the user runs the data science agent in a Cloud Run deployment. The specific error generated is a syntax error that results from changes in f-string parsing between 3.11 and 3.12.
+
+**To Reproduce**
+Steps to reproduce the behavior:
+1. Install current versions of `adk-python` and `adk-samples`.
+2. Run `adk deploy cloud_run` for the `data-science` agent.
+3. Navigate to the web interface for the deployed agent.
+4. Type anything in the web interface.
+5. Get an error: `SyntaxError: unterminated string literal (detected at line 48)`
+
+**Expected behavior**
+Data science agent responds correctly.
+
+Sample correct interaction:
+User: Hello, what can you do for me?
+Agent: Hello! I'm a data science and data analytics multi-agent system. I can help you with:
+
+Querying databases: I can retrieve data from the forecasting_sticker_sales.test and forecasting_sticker_sales.train tables based on your questions.
+Data analysis: I can perform various data science tasks and Python analysis on the data.
+BigQuery ML: If you specifically ask for it, I can route your request to a BigQuery ML agent for tasks like model training, evaluation, or prediction.
+Just let me know what you'd like to do with your data!
+'''
+
+[swebench_live]
+instance_id = "google__adk-python-2502"
+repo = "google/adk-python"
+pull_number = "2502"
+base_commit = "a2b7909fc36e7786a721f28e2bf75a1e86ad230d"
+created_at = "2025-08-13T01:49:16"
+docker_image = "starryzhang/sweb.eval.x86_64.google_1776_adk-python-2502"
+test_cmds = ["pytest -rA"]
+fail_to_pass = 8
+pass_to_pass = 4034
+image_gb_compressed = 0.938

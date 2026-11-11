@@ -1,0 +1,78 @@
+diff --git a/Lib/fontTools/feaLib/builder.py b/Lib/fontTools/feaLib/builder.py
+index 0d25322255..9c665f8e5f 100644
+--- a/Lib/fontTools/feaLib/builder.py
++++ b/Lib/fontTools/feaLib/builder.py
+@@ -32,6 +32,7 @@
+     AnySubstBuilder,
+ )
+ from fontTools.otlLib.error import OpenTypeLibError
++from fontTools.varLib.errors import VarLibError
+ from fontTools.varLib.varStore import OnlineVarStoreBuilder
+ from fontTools.varLib.builder import buildVarDevTable
+ from fontTools.varLib.featureVars import addFeatureVariationsRaw
+@@ -1728,9 +1729,14 @@ def makeVariablePos(self, location, varscalar):
+         if not varscalar.does_vary:
+             return varscalar.default, None
+ 
+-        default, index = varscalar.add_to_variation_store(
+-            self.varstorebuilder, self.model_cache, self.font.get("avar")
+-        )
++        try:
++            default, index = varscalar.add_to_variation_store(
++                self.varstorebuilder, self.model_cache, self.font.get("avar")
++            )
++        except VarLibError as e:
++            raise FeatureLibError(
++                "Failed to compute deltas for variable scalar", location
++            ) from e
+ 
+         device = None
+         if index is not None and index != 0xFFFFFFFF:
+diff --git a/Lib/fontTools/feaLib/parser.py b/Lib/fontTools/feaLib/parser.py
+index 451dd62411..38d9610e2f 100644
+--- a/Lib/fontTools/feaLib/parser.py
++++ b/Lib/fontTools/feaLib/parser.py
+@@ -2198,7 +2198,7 @@ def expect_master_(self):
+                 raise FeatureLibError(
+                     "Expected an equals sign", self.cur_token_location_
+                 )
+-            value = self.expect_number_()
++            value = self.expect_integer_or_float_()
+             location[axis] = value
+             if self.next_token_type_ is Lexer.NAME and self.next_token_[0] == ":":
+                 # Lexer has just read the value as a glyph name. We'll correct it later
+@@ -2230,6 +2230,16 @@ def expect_float_(self):
+             "Expected a floating-point number", self.cur_token_location_
+         )
+ 
++    def expect_integer_or_float_(self):
++        if self.next_token_type_ == Lexer.FLOAT:
++            return self.expect_float_()
++        elif self.next_token_type_ is Lexer.NUMBER:
++            return self.expect_number_()
++        else:
++            raise FeatureLibError(
++                "Expected an integer or floating-point number", self.cur_token_location_
++            )
++
+     def expect_decipoint_(self):
+         if self.next_token_type_ == Lexer.FLOAT:
+             return self.expect_float_()
+diff --git a/Lib/fontTools/feaLib/variableScalar.py b/Lib/fontTools/feaLib/variableScalar.py
+index 96e7c07566..31f1bd19f2 100644
+--- a/Lib/fontTools/feaLib/variableScalar.py
++++ b/Lib/fontTools/feaLib/variableScalar.py
+@@ -17,7 +17,12 @@ def __init__(self, location_value={}):
+     def __repr__(self):
+         items = []
+         for location, value in self.values.items():
+-            loc = ",".join(["%s=%i" % (ax, loc) for ax, loc in location])
++            loc = ",".join(
++                [
++                    f"{ax}={int(coord) if float(coord).is_integer() else coord}"
++                    for ax, coord in location
++                ]
++            )
+             items.append("%s:%i" % (loc, value))
+         return "(" + (" ".join(items)) + ")"
+ 

@@ -1,0 +1,88 @@
+diff --git a/casbin/management_enforcer.py b/casbin/management_enforcer.py
+index 8969b6e..3a805de 100644
+--- a/casbin/management_enforcer.py
++++ b/casbin/management_enforcer.py
+@@ -240,6 +240,14 @@ def add_grouping_policies(self, rules):
+         """
+         return self.add_named_grouping_policies("g", rules)
+ 
++    def add_grouping_policies_ex(self, rules):
++        """add_grouping_policies_ex adds role inheritance rules to the current policy.
++
++        If the rule already exists, the rule will not be added.
++        But unlike add_grouping_policies, other non-existent rules are added instead of returning false directly.
++        """
++        return self.add_named_grouping_policies_ex("g", rules)
++
+     def add_named_grouping_policy(self, ptype, *params):
+         """adds a named role inheritance rule to the current policy.
+ 
+@@ -275,6 +283,18 @@ def add_named_grouping_policies(self, ptype, rules):
+ 
+         return rules_added
+ 
++    def add_named_grouping_policies_ex(self, ptype, rules):
++        """add_named_grouping_policies_ex adds role inheritance rules to the current policy.
++
++        If the rule already exists, the rule will not be added.
++        But unlike add_named_grouping_policies, other non-existent rules are added instead of returning false directly.
++        """
++        rules_added = self._add_policies_ex("g", ptype, rules)
++        if rules_added and self.auto_build_role_links:
++            self.model.build_incremental_role_links(self.rm_map[ptype], PolicyOp.Policy_add, "g", ptype, rules)
++
++        return rules_added
++
+     def remove_grouping_policy(self, *params):
+         """removes a role inheritance rule from the current policy."""
+         return self.remove_named_grouping_policy("g", *params)
+diff --git a/casbin/persist/adapters/file_adapter.py b/casbin/persist/adapters/file_adapter.py
+index d5727a7..d4d83d5 100644
+--- a/casbin/persist/adapters/file_adapter.py
++++ b/casbin/persist/adapters/file_adapter.py
+@@ -72,6 +72,9 @@ def add_policy(self, sec, ptype, rule):
+     def add_policies(self, sec, ptype, rules):
+         pass
+ 
++    def add_policies_ex(self, sec, ptype, rules):
++        pass
++
+     def remove_policy(self, sec, ptype, rule):
+         pass
+ 
+diff --git a/casbin/synced_enforcer.py b/casbin/synced_enforcer.py
+index 936bc63..c5982c6 100644
+--- a/casbin/synced_enforcer.py
++++ b/casbin/synced_enforcer.py
+@@ -645,6 +645,15 @@ def add_grouping_policies(self, rules):
+         with self._wl:
+             return self._e.add_grouping_policies(rules)
+ 
++    def add_grouping_policies_ex(self, rules):
++        """add_grouping_policies_ex adds role inheritance rules to the current policy.
++
++        If the rule already exists, the rule will not be added.
++        But unlike add_grouping_policies, other non-existent rules are added instead of returning false directly.
++        """
++        with self._wl:
++            return self._e.add_grouping_policies_ex(rules)
++
+     def add_named_grouping_policies(self, ptype, rules):
+         """ "adds named role inheritance rules to the current policy.
+ 
+@@ -653,6 +662,15 @@ def add_named_grouping_policies(self, ptype, rules):
+         with self._wl:
+             return self._e.add_named_grouping_policies(ptype, rules)
+ 
++    def add_named_grouping_policies_ex(self, ptype, rules):
++        """add_named_grouping_policies_ex adds role inheritance rules to the current named policy.
++
++        If the rule already exists, the rule will not be added.
++        But unlike add_named_grouping_policies, other non-existent rules are added instead of returning false directly.
++        """
++        with self._wl:
++            return self._e.add_named_grouping_policies_ex(ptype, rules)
++
+     def remove_grouping_policies(self, rules):
+         """removes role inheritance rules from the current policy."""
+         with self._wl:

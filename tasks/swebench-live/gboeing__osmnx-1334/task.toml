@@ -1,0 +1,119 @@
+id = "gboeing__osmnx-1334"
+image = "starryzhang/sweb.eval.x86_64.gboeing_1776_osmnx-1334"
+workdir = "/testbed"
+test_cmd = "bash .swebench_live/run.sh"
+timeout_s = 1800
+
+statement = '''
+features_from_xml fails on export containing incomplete multipolygon
+### Contributing guidelines
+
+- [x] I understand the contributing guidelines
+
+### Documentation
+
+- [x] My problem is not addressed by the documentation or examples
+
+### Existing issues
+
+- [x] My problem does not appear in an existing issue
+
+### What operating system and Python version are you using?
+
+Python 3.14
+
+### What OSMnx version are you using?
+
+2.0.5
+
+### Environment packages and versions
+
+```shell
+Package            Version
+------------------ -----------
+certifi            2025.7.14
+charset-normalizer 3.4.2
+contourpy          1.3.3
+cycler             0.12.1
+fonttools          4.59.0
+geopandas          1.1.1
+idna               3.10
+iniconfig          2.1.0
+kiwisolver         1.4.8
+matplotlib         3.10.5
+mock               5.2.0
+networkx           3.5
+numpy              2.3.2
+osmium             4.0.2
+osmnx              2.0.5
+packaging          25.0
+pandas             2.2.3
+pillow             11.3.0
+pip                25.1.1
+pluggy             1.6.0
+Pygments           2.19.2
+pyogrio            0.11.1
+pyparsing          3.2.3
+pyproj             3.7.1
+pytest             8.4.1
+python-dateutil    2.9.0.post0
+pytz               2025.2
+requests           2.32.4
+shapely            2.1.1
+six                1.17.0
+tzdata             2025.2
+urllib3            2.5.0
+```
+
+### How did you install OSMnx?
+
+pip or uv (via PyPI)
+
+### Problem description
+
+`featuress_from_xml` will fail with the following stacktrace if run on an export that contains an incomplete multipolygon.
+```
+Traceback (most recent call last):
+  File "<python-input-5>", line 2, in <module>
+    osmnx.features_from_xml("./osm_export_xml.osm")
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/site-packages/osmnx/features.py", line 374, in features_from_xml
+    gdf = _create_gdf(response_jsons, polygon, tags)
+  File "/usr/local/lib/python3.13/site-packages/osmnx/features.py", line 420, in _create_gdf
+    data=_process_features(elements, set(tags.keys())),
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/site-packages/osmnx/features.py", line 503, in _process_features
+    relation["geometry"] = _build_relation_geometry(relation.pop("members"), way_geoms)
+                           ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/site-packages/osmnx/features.py", line 601, in _build_relation_geometry
+    geom = way_geoms[member["ref"]]
+           ~~~~~~~~~^^^^^^^^^^^^^^^
+KeyError: 44098878
+```
+This came up while testing a regression in a test on https://github.com/chrieke/prettymapp when updating from osmnx v1 to v2. In v1 (tested on 1.9.3) it succeeds with no error, seemingly having ignored the relation. In v2 (tested on 2.0.0 and 2.0.5) it errors.
+
+If you move/zoom the export so that the entire multipolygon is exported then osmnx ingests it correctly. For example around https://www.openstreetmap.org/export#map=19/52.508763/13.387299 it's rather easy to trigger due to the large number of multipolygons.
+
+### Minimal standalone reproducible example
+
+```python
+Export an .osm file that only partially contains a relation. For example https://github.com/chrieke/prettymapp/blob/3a6ef573f343718f001be8ee8038c15b687876f9/prettymapp/tests/mock_data/osm_export_xml.osm
+
+Run
+
+import osmnx
+osmnx.features_from_xml("./osm_export_xml.osm")
+```
+'''
+
+[swebench_live]
+instance_id = "gboeing__osmnx-1334"
+repo = "gboeing/osmnx"
+pull_number = "1334"
+base_commit = "efcc3a77db83c0da40c8fd4680182471cd505fad"
+created_at = "2025-08-10T21:41:00"
+docker_image = "starryzhang/sweb.eval.x86_64.gboeing_1776_osmnx-1334"
+test_cmds = ["uv run pytest --verbose --maxfail=1 --typeguard-packages=osmnx --cov=osmnx --cov-report=xml --numprocesses=3 --dist=loadgroup -rA"]
+fail_to_pass = 1
+pass_to_pass = 3
+image_gb_compressed = 0.677

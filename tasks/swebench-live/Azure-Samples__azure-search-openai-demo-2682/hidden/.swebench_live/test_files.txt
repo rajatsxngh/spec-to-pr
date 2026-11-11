@@ -1,0 +1,9 @@
+tests/snapshots/test_app/test_ask_handle_exception/client0/result.json
+tests/snapshots/test_app/test_ask_handle_exception/client1/result.json
+tests/snapshots/test_app/test_chat_handle_exception/client0/result.json
+tests/snapshots/test_app/test_chat_handle_exception/client1/result.json
+tests/snapshots/test_app/test_chat_handle_exception_streaming/client0/result.jsonlines
+tests/snapshots/test_app/test_chat_handle_exception_streaming/client1/result.jsonlines
+tests/snapshots/test_app/test_chat_stream_handle_exception/client0/result.json
+tests/snapshots/test_app/test_chat_stream_handle_exception/client1/result.json
+tests/test_cosmosdb.py

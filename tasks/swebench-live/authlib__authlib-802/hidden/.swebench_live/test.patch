@@ -1,0 +1,215 @@
+diff --git a/tests/flask/test_oauth2/test_openid_code_grant.py b/tests/flask/test_oauth2/test_openid_code_grant.py
+index 04715b0b..564a6788 100644
+--- a/tests/flask/test_oauth2/test_openid_code_grant.py
++++ b/tests/flask/test_oauth2/test_openid_code_grant.py
+@@ -31,9 +31,9 @@ def save_authorization_code(self, code, request):
+ 
+ class OpenIDCode(_OpenIDCode):
+     def get_jwt_config(self, grant):
+-        key = current_app.config["OAUTH2_JWT_KEY"]
+-        alg = current_app.config["OAUTH2_JWT_ALG"]
+-        iss = current_app.config["OAUTH2_JWT_ISS"]
++        key = current_app.config.get("OAUTH2_JWT_KEY")
++        alg = current_app.config.get("OAUTH2_JWT_ALG")
++        iss = current_app.config.get("OAUTH2_JWT_ISS")
+         return dict(key=key, alg=alg, iss=iss, exp=3600)
+ 
+     def exists_nonce(self, nonce, request):
+@@ -53,7 +53,7 @@ def config_app(self):
+             }
+         )
+ 
+-    def prepare_data(self, require_nonce=False):
++    def prepare_data(self, require_nonce=False, id_token_signed_response_alg=None):
+         self.config_app()
+         server = create_authorization_server(self.app)
+         server.register_grant(
+@@ -75,6 +75,7 @@ def prepare_data(self, require_nonce=False):
+                 "scope": "openid profile address",
+                 "response_types": ["code"],
+                 "grant_types": ["authorization_code"],
++                "id_token_signed_response_alg": id_token_signed_response_alg,
+             }
+         )
+         db.session.add(client)
+@@ -238,6 +239,82 @@ def test_prompt_none_not_logged(self):
+         assert params["error"] == "login_required"
+         assert params["state"] == "bar"
+ 
++    def test_client_metadata_custom_alg(self):
++        """If the client metadata 'id_token_signed_response_alg' is defined,
++        it should be used to sign id_tokens."""
++        self.prepare_data(id_token_signed_response_alg="HS384")
++        del self.app.config["OAUTH2_JWT_ALG"]
++        rv = self.client.post(
++            "/oauth/authorize",
++            data={
++                "response_type": "code",
++                "client_id": "code-client",
++                "state": "bar",
++                "scope": "openid profile",
++                "redirect_uri": "https://a.b",
++                "user_id": "1",
++            },
++        )
++        params = dict(url_decode(urlparse.urlparse(rv.location).query))
++        code = params["code"]
++        headers = self.create_basic_header("code-client", "code-secret")
++        rv = self.client.post(
++            "/oauth/token",
++            data={
++                "grant_type": "authorization_code",
++                "redirect_uri": "https://a.b",
++                "code": code,
++            },
++            headers=headers,
++        )
++        resp = json.loads(rv.data)
++        claims = jwt.decode(
++            resp["id_token"],
++            "secret",
++            claims_cls=CodeIDToken,
++            claims_options={"iss": {"value": "Authlib"}},
++        )
++        claims.validate()
++        assert claims.header["alg"] == "HS384"
++
++    def test_client_metadata_alg_none(self):
++        """The 'none' 'id_token_signed_response_alg' alg should be
++        supported in non implicit flows."""
++        self.prepare_data(id_token_signed_response_alg="none")
++        del self.app.config["OAUTH2_JWT_ALG"]
++        rv = self.client.post(
++            "/oauth/authorize",
++            data={
++                "response_type": "code",
++                "client_id": "code-client",
++                "state": "bar",
++                "scope": "openid profile",
++                "redirect_uri": "https://a.b",
++                "user_id": "1",
++            },
++        )
++        params = dict(url_decode(urlparse.urlparse(rv.location).query))
++        code = params["code"]
++        headers = self.create_basic_header("code-client", "code-secret")
++        rv = self.client.post(
++            "/oauth/token",
++            data={
++                "grant_type": "authorization_code",
++                "redirect_uri": "https://a.b",
++                "code": code,
++            },
++            headers=headers,
++        )
++        resp = json.loads(rv.data)
++        claims = jwt.decode(
++            resp["id_token"],
++            "secret",
++            claims_cls=CodeIDToken,
++            claims_options={"iss": {"value": "Authlib"}},
++        )
++        claims.validate()
++        assert claims.header["alg"] == "none"
++
+ 
+ class RSAOpenIDCodeTest(BaseTestCase):
+     def config_app(self):
+diff --git a/tests/flask/test_oauth2/test_openid_implict_grant.py b/tests/flask/test_oauth2/test_openid_implict_grant.py
+index e7b4cdaa..45b911af 100644
+--- a/tests/flask/test_oauth2/test_openid_implict_grant.py
++++ b/tests/flask/test_oauth2/test_openid_implict_grant.py
+@@ -1,3 +1,5 @@
++from flask import current_app
++
+ from authlib.common.urls import add_params_to_uri
+ from authlib.common.urls import url_decode
+ from authlib.common.urls import urlparse
+@@ -15,7 +17,8 @@
+ 
+ class OpenIDImplicitGrant(_OpenIDImplicitGrant):
+     def get_jwt_config(self):
+-        return dict(key="secret", alg="HS256", iss="Authlib", exp=3600)
++        alg = current_app.config.get("OAUTH2_JWT_ALG", "HS256")
++        return dict(key="secret", alg=alg, iss="Authlib", exp=3600)
+ 
+     def generate_user_info(self, user, scopes):
+         return user.generate_user_info(scopes)
+@@ -25,7 +28,7 @@ def exists_nonce(self, nonce, request):
+ 
+ 
+ class ImplicitTest(TestCase):
+-    def prepare_data(self):
++    def prepare_data(self, id_token_signed_response_alg=None):
+         server = create_authorization_server(self.app)
+         server.register_grant(OpenIDImplicitGrant)
+ 
+@@ -43,6 +46,7 @@ def prepare_data(self):
+                 "scope": "openid profile",
+                 "token_endpoint_auth_method": "none",
+                 "response_types": ["id_token", "id_token token"],
++                "id_token_signed_response_alg": id_token_signed_response_alg,
+             }
+         )
+         self.authorize_url = (
+@@ -51,12 +55,13 @@ def prepare_data(self):
+         db.session.add(client)
+         db.session.commit()
+ 
+-    def validate_claims(self, id_token, params):
+-        jwt = JsonWebToken(["HS256"])
++    def validate_claims(self, id_token, params, alg="HS256"):
++        jwt = JsonWebToken([alg])
+         claims = jwt.decode(
+             id_token, "secret", claims_cls=ImplicitIDToken, claims_params=params
+         )
+         claims.validate()
++        return claims
+ 
+     def test_consent_view(self):
+         self.prepare_data()
+@@ -199,3 +204,44 @@ def test_response_mode_form_post(self):
+         )
+         assert b'name="id_token"' in rv.data
+         assert b'name="state"' in rv.data
++
++    def test_client_metadata_custom_alg(self):
++        """If the client metadata 'id_token_signed_response_alg' is defined,
++        it should be used to sign id_tokens."""
++        self.prepare_data(id_token_signed_response_alg="HS384")
++        self.app.config["OAUTH2_JWT_ALG"] = None
++        rv = self.client.post(
++            "/oauth/authorize",
++            data={
++                "response_type": "id_token",
++                "client_id": "implicit-client",
++                "scope": "openid profile",
++                "state": "foo",
++                "redirect_uri": "https://a.b/c",
++                "user_id": "1",
++                "nonce": "abc",
++            },
++        )
++        params = dict(url_decode(urlparse.urlparse(rv.location).fragment))
++        claims = self.validate_claims(params["id_token"], params, "HS384")
++        assert claims.header["alg"] == "HS384"
++
++    def test_client_metadata_alg_none(self):
++        """The 'none' 'id_token_signed_response_alg' alg should be
++        forbidden in non implicit flows."""
++        self.prepare_data(id_token_signed_response_alg="none")
++        self.app.config["OAUTH2_JWT_ALG"] = None
++        rv = self.client.post(
++            "/oauth/authorize",
++            data={
++                "response_type": "id_token",
++                "client_id": "implicit-client",
++                "scope": "openid profile",
++                "state": "foo",
++                "redirect_uri": "https://a.b/c",
++                "user_id": "1",
++                "nonce": "abc",
++            },
++        )
++        params = dict(url_decode(urlparse.urlparse(rv.location).fragment))
++        assert params["error"] == "invalid_request"

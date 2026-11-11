@@ -1,0 +1,106 @@
+id = "trailofbits__algo-14801"
+image = "starryzhang/sweb.eval.x86_64.trailofbits_1776_algo-14801"
+workdir = "/testbed"
+test_cmd = "bash .swebench_live/run.sh"
+timeout_s = 1800
+
+statement = '''
+DigitalOcean cloud-init fails to process write_files directive causing SSH timeout on port 4160
+## Problem Description
+
+DigitalOcean deployments are failing during the "Wait until SSH becomes ready..." step with a timeout error when trying to connect to port 4160. The root cause is that DigitalOcean's cloud-init is not processing the `write_files` directive in Algo's cloud-init template, leaving SSH on the default port 22 instead of reconfiguring it to port 4160.
+
+## Error Message
+
+```
+TASK [Wait until SSH becomes ready...] **********************************************************************************************************************
+fatal: [localhost]: FAILED! => {"changed": false, "elapsed": 321, "msg": "Timeout when waiting for search string OpenSSH in xxx.xxx.xxx.xxx:4160"}
+```
+
+## Root Cause Analysis
+
+1. **Cloud-init template rendering**: The template in `files/cloud-init/base.yml` renders correctly and includes the proper `write_files` section with SSH configuration.
+
+2. **Cloud-init processing failure**: DigitalOcean's cloud-init shows the following warning:
+   ```
+   WARNING: Unhandled non-multipart (text/x-not-multipart) userdata: 'b'# cloud-config'...'
+   ```
+
+3. **Module skipping**: Cloud-init logs show:
+   ```
+   Skipping modules 'bootcmd,write_files,disk_setup,ca_certs,rsyslog' because no applicable config is provided.
+   ```
+
+4. **SSH configuration not applied**: The `/etc/ssh/sshd_config` file remains at DigitalOcean defaults instead of being replaced with Algo's template.
+
+## Reproduction Steps
+
+1. Deploy Algo to DigitalOcean using standard configuration
+2. Observe timeout during SSH connectivity check on port 4160
+3. SSH to droplet on port 22 (still works)
+4. Check `sudo cloud-init status --long` - shows "Unhandled non-multipart userdata" warning
+5. Check `/var/log/cloud-init.log` - shows `write_files` module was skipped
+6. Check `/etc/ssh/sshd_config` - remains default configuration instead of Algo template
+
+## Environment
+
+- **Algo version**: Latest master branch (commit 0ddd994)
+- **Cloud provider**: DigitalOcean
+- **Droplet image**: ubuntu-22-04-x64
+- **Cloud-init version**: 24.1.3-0ubuntu3.3 (on Ubuntu 22.04)
+
+## Expected Behavior
+
+Cloud-init should process the `write_files` directive and apply the SSH configuration template to `/etc/ssh/sshd_config`, setting:
+- `Port 4160`
+- `AllowGroups algo`
+- `PermitRootLogin no`
+- Other security settings
+
+## Workaround
+
+The issue can be temporarily resolved by manually applying the SSH configuration:
+
+```bash
+ssh -i configs/algo.pem root@<droplet-ip> "sudo tee /etc/ssh/sshd_config > /dev/null << 'EOF'
+Port 4160
+AllowGroups algo
+PermitRootLogin no
+PasswordAuthentication no
+ChallengeResponseAuthentication no
+UsePAM yes
+X11Forwarding yes
+PrintMotd no
+AcceptEnv LANG LC_*
+Subsystem	sftp	/usr/lib/openssh/sftp-server
+EOF"
+
+ssh -i configs/algo.pem root@<droplet-ip> "sudo systemctl restart sshd"
+```
+
+## Potential Solutions
+
+1. **Investigate user-data format**: The "non-multipart" warning suggests DigitalOcean's cloud-init may expect a different format or MIME type for the user-data.
+
+2. **Update template rendering**: Consider using multipart user-data format or adjusting headers to ensure compatibility with DigitalOcean's cloud-init implementation.
+
+3. **Alternative deployment method**: Consider using DigitalOcean's API to configure SSH post-deployment instead of relying on cloud-init.
+
+## Additional Context
+
+This issue affects the core functionality of Algo's DigitalOcean deployment and prevents successful VPN server setup. The current troubleshooting documentation mentions firewall issues as a potential cause for SSH timeouts, but this specific cloud-init compatibility issue is not documented.
+
+The cloud-init template works correctly when manually processed, indicating the issue is specifically with how DigitalOcean's cloud-init service interprets the user-data provided by Algo.
+'''
+
+[swebench_live]
+instance_id = "trailofbits__algo-14801"
+repo = "trailofbits/algo"
+pull_number = "14801"
+base_commit = "0ddd994ff489a39a80d91ee7194618f744a807c1"
+created_at = "2025-08-03T15:15:36"
+docker_image = "starryzhang/sweb.eval.x86_64.trailofbits_1776_algo-14801"
+test_cmds = ["pytest -rA"]
+fail_to_pass = 1
+pass_to_pass = 43
+image_gb_compressed = 0.591

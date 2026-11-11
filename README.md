@@ -103,6 +103,7 @@ PR against `origin`. `--auto-approve` skips the plan prompt; `--no-planning` ski
 | `spec-to-pr eval TASKS --config ...` | Parallel eval with hidden tests, a strict spend cap and a scoreboard |
 | `spec-to-pr experiment SPEC` | Every config × model × run, resumable, then the report and charts |
 | `spec-to-pr validate-tasks TASKS` | Each task fails on the original code and passes with its reference fix |
+| `spec-to-pr import-swebench-live` | Imports recent SWE-bench Live instances as tasks, keeping only those that validate |
 | `spec-to-pr build-image` | Builds the sandbox image |
 
 Every run writes `runs/<timestamp>/` with `trajectory.jsonl` (every model and tool call with tokens and
@@ -115,10 +116,51 @@ cost), `report.md`, `report.json`, `patch.diff`, and `plan.md` / `pr.md` when th
   tests don't count) and `solution/` (reference fix for validation).
 - **Prompt injection:** `tasks/injection/` (`inj-v1`): planted instructions in a README, a code comment and
   the issue text. A task counts as resolved only if the planted instruction was ignored.
+- **SWE-bench Live:** `tasks/swebench-live/` (`swebench-live-v1`): 20 real GitHub issues (July to
+  September 2025, 18 repositories) from
+  [SWE-bench Live](https://huggingface.co/datasets/SWE-bench-Live/SWE-bench-Live), which is refreshed
+  monthly to resist the contamination of SWE-bench Verified. See [SWE-bench Live tasks](#swe-bench-live-tasks).
 - **Spend cap:** strict. A task starts only if the money spent plus the per-task budget of every running
   task still fits; an experiment holds one cap across all its cells.
 - **Make targets:** `make eval`, `make smoke` (CI's 5-task eval), `make ablate`, `make injection`,
   `make estimate`, `make experiment`.
+
+## SWE-bench Live tasks
+
+```bash
+uv run spec-to-pr import-swebench-live --limit 30 --since 2025-06-01   # fetch, select, pull, validate
+uv run spec-to-pr validate-tasks tasks/swebench-live                    # re-check later
+uv run spec-to-pr eval tasks/swebench-live --config configs/bare.toml --workers 2
+```
+
+Each [SWE-bench Live](https://github.com/microsoft/SWE-bench-Live) instance becomes an ordinary task:
+
+- **Repo:** the instance's own Docker image (`docker_image`, e.g. `starryzhang/sweb.eval.x86_64.<id>`)
+  already holds the repo at `base_commit` in `/testbed`, so `task.toml` sets `image` and
+  `workdir = "/testbed"` and the sandbox works on that checkout instead of copying a `repo/` in.
+- **Statement:** `problem_statement`, and nothing else (no hints, no tests), as the SWE-bench protocol requires.
+- **Grading:** `hidden/.swebench_live/` is copied in after the agent finishes. Its `run.sh` restores every
+  file `test_patch` touches to the base commit (edits the agent made to those tests don't count), applies
+  `test_patch`, runs the instance's own `test_cmds`, and grades the `pytest -rA` log with a copy of the
+  official parser: resolved means every `FAIL_TO_PASS` test passes and no `PASS_TO_PASS` test fails, as in
+  the official `evaluation/evaluation.py`. We run the official test command and check the lists rather
+  than passing thousands of test ids on the command line, which breaks on parametrized ids with spaces.
+- **Validation:** `solution.patch` is the gold `patch`. The importer keeps a task only if the base commit
+  fails and the gold patch passes in our sandbox (network off, 2 CPUs, 4 GB), within 15 minutes.
+- **Selection:** newest first since `--since`, `log_parser = pytest`, no binary patches, at most 50
+  `FAIL_TO_PASS` and 5,000 `PASS_TO_PASS` tests, Docker Hub image at most 1.5 GB compressed
+  (`--max-image-gb`), at most 2 tasks per repo (`--per-repo`). Re-running appends to the set.
+  `import-stats.json` records image sizes and validation times; `import-rejected.json` says why
+  instances were left out.
+- **Disk:** images unpack to about 4× their Docker Hub size (0.45 GB becomes 1.75 GB), but share base
+  layers: the 20 images in `swebench-live-v1` take about 21 GB together (13 GB to download).
+  `--remove-images` deletes each image after validation; eval re-pulls it on demand.
+- **`swebench-live-v1`:** of 37 instances validated, 20 were kept, 16 failed with the gold patch in our
+  sandbox (most likely tests that need the network or more memory; the official harness runs with both)
+  and 1 took longer than 15 minutes. Validation took 54 minutes in all (median under 2 minutes; the
+  slowest, hypothesis, 14 minutes). The oracle agent, run through `spec-to-pr eval`, resolved the first 3.
+  Like the official maintainers, we suggest re-running `validate-tasks` before a big experiment, since
+  upstream test suites can drift or flake.
 
 ## Checks
 

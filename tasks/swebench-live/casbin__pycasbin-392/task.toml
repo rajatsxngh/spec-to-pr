@@ -1,0 +1,27 @@
+id = "casbin__pycasbin-392"
+image = "starryzhang/sweb.eval.x86_64.casbin_1776_pycasbin-392"
+workdir = "/testbed"
+test_cmd = "bash .swebench_live/run.sh"
+timeout_s = 1800
+
+statement = '''
+[feature] add XXX-Ex APIs
+Like AddPoliciesEx, AddNamedPoliciesEx, AddGroupingPoliciesEx, AddNamedGroupingPoliciesEx, SelfAddPoliciesEx
+
+See:
+
+- Docs: https://casbin.org/docs/management-api
+- Go Casbin: https://github.com/casbin/casbin/blob/master/management_api.go
+'''
+
+[swebench_live]
+instance_id = "casbin__pycasbin-392"
+repo = "casbin/pycasbin"
+pull_number = "392"
+base_commit = "daf3827732d68d83605675a848c689bb6569a136"
+created_at = "2025-08-06T09:14:35"
+docker_image = "starryzhang/sweb.eval.x86_64.casbin_1776_pycasbin-392"
+test_cmds = ["pytest -rA"]
+fail_to_pass = 2
+pass_to_pass = 298
+image_gb_compressed = 0.443

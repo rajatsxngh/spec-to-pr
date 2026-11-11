@@ -1,0 +1,48 @@
+id = "a2aproject__a2a-python-414"
+image = "starryzhang/sweb.eval.x86_64.a2aproject_1776_a2a-python-414"
+workdir = "/testbed"
+test_cmd = "bash .swebench_live/run.sh"
+timeout_s = 1800
+
+statement = '''
+[Bug]: JSONRPC error mapping
+### What happened?
+Running the [@a2a-project/a2a-tck](https://github.com/a2aproject/a2a-tck) I got a few discrepancy on JSONRPC error mapping compared to JSONRPC 2.0 spec
+
+Analysis of the issues:
+
+  1. Test case 0 - Missing jsonrpc field:
+    - TCK expects: -32600 (Invalid Request) ✅ CORRECT
+    - SUT returns: -32602 (Invalid params) ❌ INCORRECT
+    - Verdict: SUT is wrong - missing jsonrpc makes the request invalid per JSON-RPC spec
+  2. Test case 3 - Invalid id type:
+    - TCK expects: -32600 (Invalid Request) ✅ CORRECT
+    - SUT returns: 500 HTTP error ❌ MAJOR BUG
+    - Verdict: SUT is wrong - it should return -32600, not crash with 500
+  3. Test case 4 - Invalid params type:
+    - TCK expects: -32602 (Invalid params) ✅ CORRECT
+    - SUT returns: -32600 (Invalid Request) ❌ INCORRECT
+    - Verdict: SUT is wrong - when params is wrong type, it's invalid params, not invalid request
+
+### Relevant log output
+
+```shell
+
+```
+
+### Code of Conduct
+
+- [x] I agree to follow this project's Code of Conduct
+'''
+
+[swebench_live]
+instance_id = "a2aproject__a2a-python-414"
+repo = "a2aproject/a2a-python"
+pull_number = "414"
+base_commit = "3ffae8f8046aef20e559e19c21a5f9464a2c89ca"
+created_at = "2025-08-19T21:48:58"
+docker_image = "starryzhang/sweb.eval.x86_64.a2aproject_1776_a2a-python-414"
+test_cmds = ["pytest -rA"]
+fail_to_pass = 2
+pass_to_pass = 660
+image_gb_compressed = 0.51

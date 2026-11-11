@@ -1,0 +1,2 @@
+acme/src/acme/_internal/tests/client_test.py
+certbot/src/certbot/_internal/tests/renewal_test.py

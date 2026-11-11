@@ -1,0 +1,27 @@
+name = "swebench-live"
+version = "swebench-live-v1"
+description = "Real recent GitHub issues from SWE-bench Live, run in each instance's own Docker image."
+source = "SWE-bench-Live/SWE-bench-Live"
+
+tasks = [
+  "HypothesisWorks__hypothesis-4532",
+  "a2aproject__a2a-python-443",
+  "octodns__octodns-1298",
+  "authlib__authlib-802",
+  "Archmonger__django-dbbackup-631",
+  "Archmonger__django-dbbackup-626",
+  "a2aproject__a2a-python-414",
+  "fonttools__fonttools-3907",
+  "spesmilo__electrum-10143",
+  "Azure-Samples__azure-search-openai-demo-2682",
+  "google__adk-python-2502",
+  "pipecat-ai__pipecat-2413",
+  "gboeing__osmnx-1334",
+  "sissbruecker__linkding-1153",
+  "IBM__mcp-context-forge-695",
+  "spulec__freezegun-582",
+  "casbin__pycasbin-392",
+  "trailofbits__algo-14801",
+  "networktocode__ntc-templates-2163",
+  "certbot__certbot-10374",
+]

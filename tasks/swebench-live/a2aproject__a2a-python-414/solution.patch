@@ -1,0 +1,189 @@
+diff --git a/src/a2a/server/apps/jsonrpc/jsonrpc_app.py b/src/a2a/server/apps/jsonrpc/jsonrpc_app.py
+index d3e422fb..e0b63887 100644
+--- a/src/a2a/server/apps/jsonrpc/jsonrpc_app.py
++++ b/src/a2a/server/apps/jsonrpc/jsonrpc_app.py
+@@ -28,6 +28,7 @@
+     GetTaskPushNotificationConfigRequest,
+     GetTaskRequest,
+     InternalError,
++    InvalidParamsError,
+     InvalidRequestError,
+     JSONParseError,
+     JSONRPCError,
+@@ -35,6 +36,7 @@
+     JSONRPCRequest,
+     JSONRPCResponse,
+     ListTaskPushNotificationConfigRequest,
++    MethodNotFoundError,
+     SendMessageRequest,
+     SendStreamingMessageRequest,
+     SendStreamingMessageResponse,
+@@ -89,6 +91,8 @@
+         Response = Any
+         HTTP_413_REQUEST_ENTITY_TOO_LARGE = Any
+ 
++MAX_CONTENT_LENGTH = 1_000_000
++
+ 
+ class StarletteUserProxy(A2AUser):
+     """Adapts the Starlette User class to the A2A user representation."""
+@@ -151,6 +155,25 @@ class JSONRPCApplication(ABC):
+     (SSE).
+     """
+ 
++    # Method-to-model mapping for centralized routing
++    A2ARequestModel = (
++        SendMessageRequest
++        | SendStreamingMessageRequest
++        | GetTaskRequest
++        | CancelTaskRequest
++        | SetTaskPushNotificationConfigRequest
++        | GetTaskPushNotificationConfigRequest
++        | ListTaskPushNotificationConfigRequest
++        | DeleteTaskPushNotificationConfigRequest
++        | TaskResubscriptionRequest
++        | GetAuthenticatedExtendedCardRequest
++    )
++
++    METHOD_TO_MODEL: dict[str, type[A2ARequestModel]] = {
++        model.model_fields['method'].default: model
++        for model in A2ARequestModel.__args__
++    }
++
+     def __init__(  # noqa: PLR0913
+         self,
+         agent_card: AgentCard,
+@@ -271,17 +294,60 @@ async def _handle_requests(self, request: Request) -> Response:  # noqa: PLR0911
+             body = await request.json()
+             if isinstance(body, dict):
+                 request_id = body.get('id')
++                # Ensure request_id is valid for JSON-RPC response (str/int/None only)
++                if request_id is not None and not isinstance(
++                    request_id, str | int
++                ):
++                    request_id = None
++            # Treat very large payloads as invalid request (-32600) before routing
++            with contextlib.suppress(Exception):
++                content_length = int(request.headers.get('content-length', '0'))
++                if content_length and content_length > MAX_CONTENT_LENGTH:
++                    return self._generate_error_response(
++                        request_id,
++                        A2AError(
++                            root=InvalidRequestError(
++                                message='Payload too large'
++                            )
++                        ),
++                    )
++            logger.debug('Request body: %s', body)
++            # 1) Validate base JSON-RPC structure only (-32600 on failure)
++            try:
++                base_request = JSONRPCRequest.model_validate(body)
++            except ValidationError as e:
++                logger.exception('Failed to validate base JSON-RPC request')
++                return self._generate_error_response(
++                    request_id,
++                    A2AError(
++                        root=InvalidRequestError(data=json.loads(e.json()))
++                    ),
++                )
+ 
+-            # First, validate the basic JSON-RPC structure. This is crucial
+-            # because the A2ARequest model is a discriminated union where some
+-            # request types have default values for the 'method' field
+-            JSONRPCRequest.model_validate(body)
++            # 2) Route by method name; unknown -> -32601, known -> validate params (-32602 on failure)
++            method = base_request.method
+ 
+-            a2a_request = A2ARequest.model_validate(body)
++            model_class = self.METHOD_TO_MODEL.get(method)
++            if not model_class:
++                return self._generate_error_response(
++                    request_id, A2AError(root=MethodNotFoundError())
++                )
++            try:
++                specific_request = model_class.model_validate(body)
++            except ValidationError as e:
++                logger.exception('Failed to validate base JSON-RPC request')
++                return self._generate_error_response(
++                    request_id,
++                    A2AError(
++                        root=InvalidParamsError(data=json.loads(e.json()))
++                    ),
++                )
+ 
++            # 3) Build call context and wrap the request for downstream handling
+             call_context = self._context_builder.build(request)
+ 
+-            request_id = a2a_request.root.id
++            request_id = specific_request.id
++            a2a_request = A2ARequest(root=specific_request)
+             request_obj = a2a_request.root
+ 
+             if isinstance(
+@@ -305,12 +371,6 @@ async def _handle_requests(self, request: Request) -> Response:  # noqa: PLR0911
+             return self._generate_error_response(
+                 None, A2AError(root=JSONParseError(message=str(e)))
+             )
+-        except ValidationError as e:
+-            traceback.print_exc()
+-            return self._generate_error_response(
+-                request_id,
+-                A2AError(root=InvalidRequestError(data=json.loads(e.json()))),
+-            )
+         except HTTPException as e:
+             if e.status_code == HTTP_413_REQUEST_ENTITY_TOO_LARGE:
+                 return self._generate_error_response(
+diff --git a/src/a2a/server/request_handlers/default_request_handler.py b/src/a2a/server/request_handlers/default_request_handler.py
+index 70eb7938..fd378cf4 100644
+--- a/src/a2a/server/request_handlers/default_request_handler.py
++++ b/src/a2a/server/request_handlers/default_request_handler.py
+@@ -36,6 +36,7 @@
+     MessageSendParams,
+     Task,
+     TaskIdParams,
++    TaskNotCancelableError,
+     TaskNotFoundError,
+     TaskPushNotificationConfig,
+     TaskQueryParams,
+@@ -111,6 +112,26 @@ async def on_get_task(
+         task: Task | None = await self.task_store.get(params.id)
+         if not task:
+             raise ServerError(error=TaskNotFoundError())
++
++        # Apply historyLength parameter if specified
++        if params.history_length is not None and task.history:
++            # Limit history to the most recent N messages
++            limited_history = (
++                task.history[-params.history_length :]
++                if params.history_length > 0
++                else []
++            )
++            # Create a new task instance with limited history
++            task = Task(
++                id=task.id,
++                context_id=task.context_id,
++                status=task.status,
++                artifacts=task.artifacts,
++                history=limited_history,
++                metadata=task.metadata,
++                kind=task.kind,
++            )
++
+         return task
+ 
+     async def on_cancel_task(
+@@ -124,6 +145,14 @@ async def on_cancel_task(
+         if not task:
+             raise ServerError(error=TaskNotFoundError())
+ 
++        # Check if task is in a non-cancelable state (completed, canceled, failed, rejected)
++        if task.status.state in TERMINAL_TASK_STATES:
++            raise ServerError(
++                error=TaskNotCancelableError(
++                    message=f'Task cannot be canceled - current state: {task.status.state}'
++                )
++            )
++
+         task_manager = TaskManager(
+             task_id=task.id,
+             context_id=task.context_id,

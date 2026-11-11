@@ -1,0 +1,2 @@
+tests/test_cloud_init_template.py
+tests/unit/test_basic_sanity.py

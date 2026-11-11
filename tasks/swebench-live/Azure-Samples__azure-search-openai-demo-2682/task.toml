@@ -1,0 +1,22 @@
+id = "Azure-Samples__azure-search-openai-demo-2682"
+image = "starryzhang/sweb.eval.x86_64.azure-samples_1776_azure-search-openai-demo-2682"
+workdir = "/testbed"
+test_cmd = "bash .swebench_live/run.sh"
+timeout_s = 1800
+
+statement = '''
+Remove hardcoded url to appservice-logs in error message
+Currently, when an error happens in the past, there's an aka.ms link that describes appservice logs. However, the app can now be hosted on EITHER app service or container apps, so that link may be confusing. Let's just change it to something like "check the application logs for a full traceback."
+'''
+
+[swebench_live]
+instance_id = "Azure-Samples__azure-search-openai-demo-2682"
+repo = "Azure-Samples/azure-search-openai-demo"
+pull_number = "2682"
+base_commit = "085f9d88f52cd967ed82d443c19060521a588fe9"
+created_at = "2025-08-16T00:06:16"
+docker_image = "starryzhang/sweb.eval.x86_64.azure-samples_1776_azure-search-openai-demo-2682"
+test_cmds = ["pytest -rA"]
+fail_to_pass = 10
+pass_to_pass = 292
+image_gb_compressed = 0.963

@@ -48,3 +48,17 @@ def test_files_and_tests_run(box):
 def test_command_timeout(box):
     r = box.exec("sleep 10", timeout_s=2)
     assert r.timed_out
+
+
+def test_image_checkout_mode_copies_nothing():
+    """SWE-bench images already hold the repo: repo=None works on the image's own directory."""
+    b = DockerSandbox(None, SandboxLimits(command_timeout_s=60), workdir="/opt/checkout-in-image")
+    try:
+        assert b.source is None  # no host copy, so no repo map from the host
+        b.exec("true", timeout_s=10)
+        r = b.exec("pwd", timeout_s=10)
+        assert r.output.strip() == "/opt/checkout-in-image"
+        b.write_file("x.txt", "hi")
+        assert b.read_file("/opt/checkout-in-image/x.txt") == "hi"
+    finally:
+        b.close()

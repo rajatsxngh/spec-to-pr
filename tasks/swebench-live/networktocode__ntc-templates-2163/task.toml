@@ -1,0 +1,373 @@
+id = "networktocode__ntc-templates-2163"
+image = "starryzhang/sweb.eval.x86_64.networktocode_1776_ntc-templates-2163"
+workdir = "/testbed"
+test_cmd = "bash .swebench_live/run.sh"
+timeout_s = 1800
+
+statement = '''
+cisco_ios_show_bfd_neighbors_details.textfsm - Not Parsing BFD Echo Mode Output
+<!---
+NOTE: The following are not considered and will be immediately closed:
+* Request for new templates.
+* Request for adding data captured in an existing template.
+* Request for help with building a TextFSM template, please use the #networktocode channel, on [Slack](http://slack.networktocode.com/).
+* Request for Template issues without both the included error and raw data.
+* Feature Requests in the form of a Bug.
+* ISSUES raised without following instructions.
+
+Please see README for more information.
+-->
+
+
+<!---
+Verify first that your issue/request is not already reported on GitHub.
+Also test if the latest release, and master branch are affected too.
+-->
+
+##### ISSUE TYPE
+<!--- Pick one below and delete the rest: -->
+ - Template Issue with error and raw data
+
+**NTC Version**
+$ pip list | grep ntc
+ntc_templates 7.9.0
+
+**Error Message** 
+`"State Error raised. Rule Line: 76. Input Line: Echo Rx Count: 156257, Echo Rx Interval (ms) min/max/avg: 377/505/439 last: 436 ms ago"`
+##### TEMPLATE USING
+<!---
+Please paste the entire template that you are using
+-->
+
+```
+Value OUR_ADDR (\S+)
+Value NEIGHBOR_ADDR (\S+)
+Value LOCAL_DISCRIM (\d+)
+Value REMOTE_DISCRIM (\d+)
+Value REMOTE_HEARD (\S+)
+Value HOLDDOWN (\d+)
+Value MULTIPLIER (\d{1,2})
+Value STATE (\w+)
+Value INTERFACE (\S+)
+Value ECHO_FUNCTION ((?:\w+\s+)?\w+\s+echo\s+function)
+Value ECHO_INTERVAL (\d+)
+Value DIAGNOSTIC_BIT (\d)
+Value DEMAND_BIT (\d)
+Value POLL_BIT (\d)
+Value MIN_TX_INTERVAL (\d+)
+Value MIN_RX_INTERVAL (\d+)
+Value RECEIVED_MIN_RX_INTERVAL (\d+)
+Value RECEIVED_MULTIPLIER (\d{1,2})
+Value HOLDDOWN_HITS (\d+)
+Value HELLO_INTERVAL (\d+)
+Value HELLO_HITS (\d+)
+Value RX_COUNT (\d+)
+Value RX_LAST (\d+)
+Value TX_COUNT (\d+)
+Value TX_LAST (\d+)
+Value REGISTERED_PROTOCOLS (\S+(?:\s+\S+)*)
+Value TEMPLATE (\S+)
+Value UPTIME (\S+)
+Value VERSION (\d+)
+
+Start
+  ^\s*IPv\d+\s+Sessions\s*$$
+  ^\s*(?:\S+\s+)?NeighAddr.*$$ -> BFD
+  #
+  # Capture time-stamp if vty line has command time-stamping turned on
+  ^Load\s+for\s+
+  ^Time\s+source\s+is
+  ^\s*$$
+  ^. -> Error
+
+BFD
+  ^\s*${OUR_ADDR}\s*${NEIGHBOR_ADDR}\s+${LOCAL_DISCRIM}\/${REMOTE_DISCRIM}\s+${REMOTE_HEARD}\s+\d+\s+\(\s*\d+\s*\)\s+${STATE}\s+${INTERFACE}\s*$$
+  #
+  ^\s*${NEIGHBOR_ADDR}\s+${LOCAL_DISCRIM}\/${REMOTE_DISCRIM}\s+${REMOTE_HEARD}\s+${STATE}\s+${INTERFACE}\s*$$
+  ^\s*OurAddr:\s+${OUR_ADDR}\s*$$
+  #
+  # common BFD details
+  ^\s*Session\s+state\s+is\s+\S+\s+and\s+${ECHO_FUNCTION}(?:\s+with\s+${ECHO_INTERVAL}\s+)?.*$$
+  ^\s*Local\s+Diag:\s+${DIAGNOSTIC_BIT},\s+Demand\s+mode:\s+${DEMAND_BIT},\s+Poll\s+bit:\s+${POLL_BIT}\s*$$
+  ^\s*MinTxInt:\s+${MIN_TX_INTERVAL},\s+MinRxInt:\s+${MIN_RX_INTERVAL},\s+Multiplier:\s+${MULTIPLIER}\s*$$
+  ^\s*Received\s+MinRxInt:\s+${RECEIVED_MIN_RX_INTERVAL},\s+Received Multiplier:\s+${RECEIVED_MULTIPLIER}\s*$$
+  #
+  # some legacy output spells holddown with one d
+  ^\s*Holdd?own\s+\(hits\):\s+${HOLDDOWN}\(${HOLDDOWN_HITS}\),\s+Hello\s+\(hits\):\s+${HELLO_INTERVAL}\(${HELLO_HITS}\)\s*$$
+  #
+  ^\s*Rx\s+Count:\s+${RX_COUNT},(?:\s+\S+){5}\s*$$
+  ^\s*Tx\s+Count:\s+${TX_COUNT},(?:\s+\S+){5}\s*$$
+  ^\s*Rx\s+Count:\s+${RX_COUNT},(?:\s+\S+){6}\s+${RX_LAST}(?:\s+\S+){2}\s*$$
+  ^\s*Tx\s+Count:\s+${TX_COUNT},(?:\s+\S+){6}\s+${TX_LAST}(?:\s+\S+){2}\s*$$
+  ^\s*Registered\s+protocols:\s+${REGISTERED_PROTOCOLS}\s*$$
+  ^\s*Template:\s+${TEMPLATE}\s*$$
+  ^\s*Uptime:\s+${UPTIME}\s*$$
+  ^\s*Last\s+packet:\s+Version:\s+${VERSION}\s+.*$$ -> Record
+  #
+  # lines of no interest for the time being
+  #
+  ^\s*Session\s+Host.*$$
+  ^\s*Handle.*$$
+  ^\s*Elapsed\s+time\s+watermarks.*$$
+  ^\s+(?:\S+\s+){1,3}bit.*$$
+  ^\s+Multiplier.*$$
+  ^\s+My\s+Discr.*$$
+  ^\s+Min\s+\S+\s+interval.*$$
+  #
+  ^\s*$$ -> Start
+  ^. -> Error
+```
+
+##### SAMPLE COMMAND OUTPUT
+<!---
+Please paste the raw output of the show command your are you using.
+-->
+
+```
+IPv4 Sessions
+NeighAddr                              LD/RD         RH/RS     State     Int
+10.103.45.4                             1/4344       Up        Up        Twe1/0/1
+Session state is UP and using echo function with 500 ms interval.
+Session Host: Software
+OurAddr: 10.103.45.5    
+Handle: 1
+Local Diag: 0, Demand mode: 0, Poll bit: 0
+MinTxInt: 1000000, MinRxInt: 1000000, Multiplier: 3
+Received MinRxInt: 1000000, Received Multiplier: 3
+Holddown (hits): 0(0), Hello (hits): 1000(78231)
+Rx Count: 78237, Rx Interval (ms) min/max/avg: 2/1004/875 last: 657 ms ago
+Tx Count: 78233, Tx Interval (ms) min/max/avg: 2/1004/877 last: 703 ms ago
+Echo Rx Count: 156257, Echo Rx Interval (ms) min/max/avg: 377/505/439 last: 436 ms ago
+Echo Tx Count: 156257, Echo Tx Interval (ms) min/max/avg: 378/505/439 last: 437 ms ago
+Elapsed time watermarks: 0 0 (last: 0)
+Registered protocols: OSPF CEF 
+Uptime: 19:03:41
+Last packet: Version: 1                  - Diagnostic: 0
+             State bit: Up               - Demand bit: 0
+             Poll bit: 0                 - Final bit: 0
+             C bit: 0                                   
+             Multiplier: 3               - Length: 24
+             My Discr.: 4344             - Your Discr.: 1
+             Min tx interval: 1000000    - Min rx interval: 1000000
+             Min Echo interval: 100000  
+
+```
+
+##### SUMMARY
+<!--- Explain the problem briefly -->
+The current template to parse the output of "show bfd neighbor details" doesn't take into account devices running **BFD Echo Mode**.
+When devices are running BFD ECHO Mode, there is additional lines in the output that reflect the counters and timers of the BFD Echo probes
+
+> Echo Rx Count: 156257, Echo Rx Interval (ms) min/max/avg: 377/505/439 last: 436 ms ago
+> Echo Tx Count: 156257, Echo Tx Interval (ms) min/max/avg: 378/505/439 last: 437 ms ago
+
+Since there are no regex rules that these lines match, we are received the above error message.
+
+##### STEPS To Fix
+
+I have added Capture Groups and Regex Rules to account for these lines as well as capture the counters/timers, and will be submitting a PR (once it goes through my company's approval process
+
+1) Add the Following Capture Groups, since we want to capture the counters/timers just like the capture groups for non-echo mode:
+
+> Value RX_COUNT (\d+)
+> Value RX_LAST (\d+)
+> Value TX_COUNT (\d+)
+> Value TX_LAST (\d+)
+> **Value ECHO_RX_COUNT (\d+)**
+> **Value ECHO_RX_LAST (\d+)**
+> **Value ECHO_TX_COUNT (\d+)**
+> **Value ECHO_TX_LAST (\d+)**
+
+2) Account for the new lines that mention "Echo" by using the regex pattern for the non-echo, but adjusting it appropriately
+
+>   ^\s*Rx\s+Count:\s+${RX_COUNT},(?:\s+\S+){6}\s+${RX_LAST}(?:\s+\S+){2}\s*$$
+>   ^\s*Tx\s+Count:\s+${TX_COUNT},(?:\s+\S+){6}\s+${TX_LAST}(?:\s+\S+){2}\s*$$
+>  **^\s*Echo\s+Rx\s+Count:\s+${ECHO_RX_COUNT},(?:\s+\S+){7}\s+${ECHO_RX_LAST}(?:\s+\S+){2}\s*$$**
+>   **^\s*Echo\s+Tx\s+Count:\s+${ECHO_TX_COUNT},(?:\s+\S+){7}\s+${ECHO_TX_LAST}(?:\s+\S+){2}\s*$$**
+
+
+##### Evidence of Template Working on BFD Echo Mode Data
+
+<img width="1851" height="748" alt="Image" src="https://github.com/user-attachments/assets/2279938d-ce38-401d-ad8c-8b17691de560" />
+cisco_ios_show_bfd_neighbors_details.textfsm - Not Parsing When BFD Neighbor Is Down due to missing rules for "Downtime"
+<!---
+NOTE: The following are not considered and will be immediately closed:
+* Request for new templates.
+* Request for adding data captured in an existing template.
+* Request for help with building a TextFSM template, please use the #networktocode channel, on [Slack](http://slack.networktocode.com/).
+* Request for Template issues without both the included error and raw data.
+* Feature Requests in the form of a Bug.
+* ISSUES raised without following instructions.
+
+Please see README for more information.
+-->
+
+
+<!---
+Verify first that your issue/request is not already reported on GitHub.
+Also test if the latest release, and master branch are affected too.
+-->
+
+##### ISSUE TYPE
+<!--- Pick one below and delete the rest: -->
+ - Template Issue with error and raw data
+
+**NTC Version**
+$ pip list | grep ntc
+ntc_templates 7.9.0
+
+**Error Message** 
+`"State Error raised. Rule Line: 76. Input Line: Downtime: 02:11:53"`
+
+
+##### TEMPLATE USING
+<!---
+Please paste the entire template that you are using
+-->
+
+```
+Value OUR_ADDR (\S+)
+Value NEIGHBOR_ADDR (\S+)
+Value LOCAL_DISCRIM (\d+)
+Value REMOTE_DISCRIM (\d+)
+Value REMOTE_HEARD (\S+)
+Value HOLDDOWN (\d+)
+Value MULTIPLIER (\d{1,2})
+Value STATE (\w+)
+Value INTERFACE (\S+)
+Value ECHO_FUNCTION ((?:\w+\s+)?\w+\s+echo\s+function)
+Value ECHO_INTERVAL (\d+)
+Value DIAGNOSTIC_BIT (\d)
+Value DEMAND_BIT (\d)
+Value POLL_BIT (\d)
+Value MIN_TX_INTERVAL (\d+)
+Value MIN_RX_INTERVAL (\d+)
+Value RECEIVED_MIN_RX_INTERVAL (\d+)
+Value RECEIVED_MULTIPLIER (\d{1,2})
+Value HOLDDOWN_HITS (\d+)
+Value HELLO_INTERVAL (\d+)
+Value HELLO_HITS (\d+)
+Value RX_COUNT (\d+)
+Value RX_LAST (\d+)
+Value TX_COUNT (\d+)
+Value TX_LAST (\d+)
+Value REGISTERED_PROTOCOLS (\S+(?:\s+\S+)*)
+Value TEMPLATE (\S+)
+Value UPTIME (\S+)
+Value VERSION (\d+)
+
+Start
+  ^\s*IPv\d+\s+Sessions\s*$$
+  ^\s*(?:\S+\s+)?NeighAddr.*$$ -> BFD
+  #
+  # Capture time-stamp if vty line has command time-stamping turned on
+  ^Load\s+for\s+
+  ^Time\s+source\s+is
+  ^\s*$$
+  ^. -> Error
+
+BFD
+  ^\s*${OUR_ADDR}\s*${NEIGHBOR_ADDR}\s+${LOCAL_DISCRIM}\/${REMOTE_DISCRIM}\s+${REMOTE_HEARD}\s+\d+\s+\(\s*\d+\s*\)\s+${STATE}\s+${INTERFACE}\s*$$
+  #
+  ^\s*${NEIGHBOR_ADDR}\s+${LOCAL_DISCRIM}\/${REMOTE_DISCRIM}\s+${REMOTE_HEARD}\s+${STATE}\s+${INTERFACE}\s*$$
+  ^\s*OurAddr:\s+${OUR_ADDR}\s*$$
+  #
+  # common BFD details
+  ^\s*Session\s+state\s+is\s+\S+\s+and\s+${ECHO_FUNCTION}(?:\s+with\s+${ECHO_INTERVAL}\s+)?.*$$
+  ^\s*Local\s+Diag:\s+${DIAGNOSTIC_BIT},\s+Demand\s+mode:\s+${DEMAND_BIT},\s+Poll\s+bit:\s+${POLL_BIT}\s*$$
+  ^\s*MinTxInt:\s+${MIN_TX_INTERVAL},\s+MinRxInt:\s+${MIN_RX_INTERVAL},\s+Multiplier:\s+${MULTIPLIER}\s*$$
+  ^\s*Received\s+MinRxInt:\s+${RECEIVED_MIN_RX_INTERVAL},\s+Received Multiplier:\s+${RECEIVED_MULTIPLIER}\s*$$
+  #
+  # some legacy output spells holddown with one d
+  ^\s*Holdd?own\s+\(hits\):\s+${HOLDDOWN}\(${HOLDDOWN_HITS}\),\s+Hello\s+\(hits\):\s+${HELLO_INTERVAL}\(${HELLO_HITS}\)\s*$$
+  #
+  ^\s*Rx\s+Count:\s+${RX_COUNT},(?:\s+\S+){5}\s*$$
+  ^\s*Tx\s+Count:\s+${TX_COUNT},(?:\s+\S+){5}\s*$$
+  ^\s*Rx\s+Count:\s+${RX_COUNT},(?:\s+\S+){6}\s+${RX_LAST}(?:\s+\S+){2}\s*$$
+  ^\s*Tx\s+Count:\s+${TX_COUNT},(?:\s+\S+){6}\s+${TX_LAST}(?:\s+\S+){2}\s*$$
+  ^\s*Registered\s+protocols:\s+${REGISTERED_PROTOCOLS}\s*$$
+  ^\s*Template:\s+${TEMPLATE}\s*$$
+  ^\s*Uptime:\s+${UPTIME}\s*$$
+  ^\s*Last\s+packet:\s+Version:\s+${VERSION}\s+.*$$ -> Record
+  #
+  # lines of no interest for the time being
+  #
+  ^\s*Session\s+Host.*$$
+  ^\s*Handle.*$$
+  ^\s*Elapsed\s+time\s+watermarks.*$$
+  ^\s+(?:\S+\s+){1,3}bit.*$$
+  ^\s+Multiplier.*$$
+  ^\s+My\s+Discr.*$$
+  ^\s+Min\s+\S+\s+interval.*$$
+  #
+  ^\s*$$ -> Start
+  ^. -> Error
+```
+
+##### SAMPLE COMMAND OUTPUT
+
+```
+IPv4 Sessions
+NeighAddr                              LD/RD         RH/RS     State     Int
+192.168.100.3                           2/0          Down      Down      Tu100
+Session Host: Hardware
+OurAddr: 192.168.100.11 
+Handle: 2
+Local Diag: 1, Demand mode: 0, Poll bit: 0
+MinTxInt: 1000000, MinRxInt: 1000000, Multiplier: 3
+Received MinRxInt: 500000, Received Multiplier: 3
+Holddown (hits): 0(0), Hello (hits): 1000(0)
+Rx Count: 0, Rx Interval (ms) min/max/avg: 0/0/0
+Tx Count: 8439, Tx Interval (ms) min/max/avg: 873/1000/1032
+Elapsed time watermarks: 0 0 (last: 0)
+Registered protocols: NHRP CEF 
+Template: GlobalWan
+Downtime: 02:11:53
+Last packet: Version: 1                  - Diagnostic: 0
+             State bit: Up               - Demand bit: 0
+             Poll bit: 0                 - Final bit: 0
+             C bit: 1                                   
+             Multiplier: 3               - Length: 24
+             My Discr.: 245              - Your Discr.: 2
+             Min tx interval: 500000     - Min rx interval: 500000
+             Min Echo interval: 0      
+``` 
+
+
+##### SUMMARY
+The current template to parse the output of "show bfd neighbor details" doesn't take into account when neighbors are in the down state. Whenever  the BFD neighbor is down, there is a "Downtime" counter that the current textFSM doesn't have a rule for. The current textFSM template accounts for **Uptime** but not **Downtime**
+
+##### STEPS To Fix
+
+I have added Capture Groups and Regex Rules to account for this, which will match the same behavior in how textFSM is treating **Uptime**
+
+1) Add the Following Capture Group to store Downtime, since we want to capture the counters/timers just like the template is doing for Uptime
+
+> Value TEMPLATE (\S+)
+> Value UPTIME (\S+)
+> **Value DOWNTIME (\S+)**
+> Value VERSION (\d+)
+
+2) Add the following regular expression 
+
+> 
+>   ^\s*Uptime:\s+${UPTIME}\s*$$
+>   **^\s*Downtime:\s+${DOWNTIME}\s*$$**
+
+
+##### Evidence of Template Working 
+
+<img width="392" height="581" alt="Image" src="https://github.com/user-attachments/assets/6dd9648f-0fc0-4110-ab9b-abed9519d86e" />
+'''
+
+[swebench_live]
+instance_id = "networktocode__ntc-templates-2163"
+repo = "networktocode/ntc-templates"
+pull_number = "2163"
+base_commit = "4f1c510510ed5dd76e998d4938781f9b02ddb2ce"
+created_at = "2025-07-25T18:33:12"
+docker_image = "starryzhang/sweb.eval.x86_64.networktocode_1776_ntc-templates-2163"
+test_cmds = ["poetry run pytest -rA"]
+fail_to_pass = 5
+pass_to_pass = 3614
+image_gb_compressed = 0.617

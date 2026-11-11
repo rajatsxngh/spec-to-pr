@@ -1,0 +1,116 @@
+id = "octodns__octodns-1298"
+image = "starryzhang/sweb.eval.x86_64.octodns_1776_octodns-1298"
+workdir = "/testbed"
+test_cmd = "bash .swebench_live/run.sh"
+timeout_s = 1800
+
+statement = '''
+OwnershipProcessor causes DuplicateRecordException in alias zones
+First of all, thank you for octoDNS!
+
+When trying to configure alias zones, I encountered the following error:
+
+```
+strutztm@nixos ~/octodns> octodns-sync --config-file ./octodns.yaml
+2025-08-25T16:47:09  [139782469125952] INFO  Manager __init__: config_file=./octodns.yaml, (octoDNS 1.13.0)
+2025-08-25T16:47:09  [139782469125952] INFO  Manager _config_executor: max_workers=1
+2025-08-25T16:47:09  [139782469125952] INFO  Manager _config_include_meta: include_meta=False
+2025-08-25T16:47:09  [139782469125952] INFO  Manager _config_enable_checksum: enable_checksum=False
+2025-08-25T16:47:09  [139782469125952] INFO  Manager _config_auto_arpa: auto_arpa=False
+2025-08-25T16:47:09  [139782469125952] INFO  Manager __init__: global_processors=[]
+2025-08-25T16:47:09  [139782469125952] INFO  Manager __init__: global_post_processors=[]
+2025-08-25T16:47:09  [139782469125952] INFO  Manager __init__: provider=config (octodns.provider.yaml 1.13.0)
+2025-08-25T16:47:09  [139782469125952] INFO  Manager __init__: provider=target (octodns.provider.yaml 1.13.0)
+2025-08-25T16:47:09  [139782469125952] INFO  Manager __init__: processor=ownership (octodns.processor.ownership 1.13.0)
+2025-08-25T16:47:09  [139782469125952] INFO  Manager sync: eligible_zones=[], eligible_targets=[], dry_run=True, force=False, plan_output_fh=<stdout>, checksum=None
+2025-08-25T16:47:09  [139782469125952] INFO  Manager sync:   zone=example.com.
+2025-08-25T16:47:09  [139782469125952] INFO  Manager sync:     sources=['config']
+2025-08-25T16:47:09  [139782469125952] INFO  Manager sync:     processors=['ownership']
+2025-08-25T16:47:09  [139782469125952] INFO  Manager sync:     targets=['target']
+2025-08-25T16:47:09  [139782469125952] INFO  Manager sync:   zone=example.net.
+2025-08-25T16:47:09  [139782469125952] INFO  YamlProvider[config] populate:   found 1 records, exists=True
+2025-08-25T16:47:09  [139782469125952] INFO  YamlProvider[target] plan: desired=example.com.
+2025-08-25T16:47:09  [139782469125952] INFO  YamlProvider[target] populate:   found 0 records, exists=False
+2025-08-25T16:47:09  [139782469125952] INFO  YamlProvider[target] plan:   Creates=2, Updates=0, Deletes=0, Existing=0, Meta=False
+Traceback (most recent call last):
+  File "/nix/store/1wfckz43viymdayxba90wzc8v991k0bm-octodns-1.13.0/bin/.octodns-sync-wrapped", line 9, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/nix/store/1wfckz43viymdayxba90wzc8v991k0bm-octodns-1.13.0/lib/python3.13/site-packages/octodns/cmds/sync.py", line 62, in main
+    manager.sync(
+    ~~~~~~~~~~~~^
+        eligible_zones=args.zone,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+        checksum=args.checksum,
+        ^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/nix/store/1wfckz43viymdayxba90wzc8v991k0bm-octodns-1.13.0/lib/python3.13/site-packages/octodns/manager.py", line 808, in sync
+    plans += [p for f in futures for p in f.result()[0]]
+                                          ~~~~~~~~^^
+  File "/nix/store/1wfckz43viymdayxba90wzc8v991k0bm-octodns-1.13.0/lib/python3.13/site-packages/octodns/manager.py", line 63, in result
+    return self.func(*self.args, **self.kwargs)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/1wfckz43viymdayxba90wzc8v991k0bm-octodns-1.13.0/lib/python3.13/site-packages/octodns/manager.py", line 524, in _populate_and_plan
+    zone = processor.process_source_zone(zone, sources=sources)
+  File "/nix/store/1wfckz43viymdayxba90wzc8v991k0bm-octodns-1.13.0/lib/python3.13/site-packages/octodns/processor/ownership.py", line 40, in process_source_zone
+    desired.add_record(txt, lenient=True)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/1wfckz43viymdayxba90wzc8v991k0bm-octodns-1.13.0/lib/python3.13/site-packages/octodns/zone.py", line 190, in add_record
+    raise DuplicateRecordException(
+    ...<3 lines>...
+    )
+octodns.zone.DuplicateRecordException: Duplicate record _owner.ns.example.net., type TXT
+```
+
+This seems to be happening for every record type, not just NS records. I can reproduce the error with the following config:
+
+octodns.yaml:
+```yaml
+---
+processors:
+  ownership:
+    class: octodns.processor.ownership.OwnershipProcessor
+providers:
+  config:
+    class: octodns.provider.yaml.YamlProvider
+    directory: ./config
+  target:
+    class: octodns.provider.yaml.YamlProvider
+    directory: ./target
+zones:
+  'example.com.':
+    processors:
+      - ownership
+    sources:
+      - config
+    targets:
+      - target
+  'example.net.':
+    alias: 'example.com.'
+```
+
+config/example.com.yaml:
+```yaml
+---
+? ''
+: - ttl: 300
+    type: NS
+    values:
+    - dns1.example.com.
+
+```
+'''
+
+[swebench_live]
+instance_id = "octodns__octodns-1298"
+repo = "octodns/octodns"
+pull_number = "1298"
+base_commit = "470df43b5a3631f72378a7d69c0091f2743eb0bc"
+created_at = "2025-08-25T21:11:54"
+docker_image = "starryzhang/sweb.eval.x86_64.octodns_1776_octodns-1298"
+test_cmds = ["pytest -rA"]
+fail_to_pass = 1
+pass_to_pass = 361
+image_gb_compressed = 0.555

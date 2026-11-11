@@ -1,0 +1,100 @@
+diff --git a/tests/snapshots/test_app/test_ask_handle_exception/client0/result.json b/tests/snapshots/test_app/test_ask_handle_exception/client0/result.json
+index 39db6d36d8..723fe960ae 100644
+--- a/tests/snapshots/test_app/test_ask_handle_exception/client0/result.json
++++ b/tests/snapshots/test_app/test_ask_handle_exception/client0/result.json
+@@ -1,3 +1,3 @@
+ {
+-    "error": "The app encountered an error processing your request.\nIf you are an administrator of the app, view the full error in the logs. See aka.ms/appservice-logs for more information.\nError type: <class 'ZeroDivisionError'>\n"
++    "error": "The app encountered an error processing your request.\nIf you are an administrator of the app, check the application logs for a full traceback.\nError type: <class 'ZeroDivisionError'>\n"
+ }
+\ No newline at end of file
+diff --git a/tests/snapshots/test_app/test_ask_handle_exception/client1/result.json b/tests/snapshots/test_app/test_ask_handle_exception/client1/result.json
+index 39db6d36d8..723fe960ae 100644
+--- a/tests/snapshots/test_app/test_ask_handle_exception/client1/result.json
++++ b/tests/snapshots/test_app/test_ask_handle_exception/client1/result.json
+@@ -1,3 +1,3 @@
+ {
+-    "error": "The app encountered an error processing your request.\nIf you are an administrator of the app, view the full error in the logs. See aka.ms/appservice-logs for more information.\nError type: <class 'ZeroDivisionError'>\n"
++    "error": "The app encountered an error processing your request.\nIf you are an administrator of the app, check the application logs for a full traceback.\nError type: <class 'ZeroDivisionError'>\n"
+ }
+\ No newline at end of file
+diff --git a/tests/snapshots/test_app/test_chat_handle_exception/client0/result.json b/tests/snapshots/test_app/test_chat_handle_exception/client0/result.json
+index 39db6d36d8..723fe960ae 100644
+--- a/tests/snapshots/test_app/test_chat_handle_exception/client0/result.json
++++ b/tests/snapshots/test_app/test_chat_handle_exception/client0/result.json
+@@ -1,3 +1,3 @@
+ {
+-    "error": "The app encountered an error processing your request.\nIf you are an administrator of the app, view the full error in the logs. See aka.ms/appservice-logs for more information.\nError type: <class 'ZeroDivisionError'>\n"
++    "error": "The app encountered an error processing your request.\nIf you are an administrator of the app, check the application logs for a full traceback.\nError type: <class 'ZeroDivisionError'>\n"
+ }
+\ No newline at end of file
+diff --git a/tests/snapshots/test_app/test_chat_handle_exception/client1/result.json b/tests/snapshots/test_app/test_chat_handle_exception/client1/result.json
+index 39db6d36d8..723fe960ae 100644
+--- a/tests/snapshots/test_app/test_chat_handle_exception/client1/result.json
++++ b/tests/snapshots/test_app/test_chat_handle_exception/client1/result.json
+@@ -1,3 +1,3 @@
+ {
+-    "error": "The app encountered an error processing your request.\nIf you are an administrator of the app, view the full error in the logs. See aka.ms/appservice-logs for more information.\nError type: <class 'ZeroDivisionError'>\n"
++    "error": "The app encountered an error processing your request.\nIf you are an administrator of the app, check the application logs for a full traceback.\nError type: <class 'ZeroDivisionError'>\n"
+ }
+\ No newline at end of file
+diff --git a/tests/snapshots/test_app/test_chat_handle_exception_streaming/client0/result.jsonlines b/tests/snapshots/test_app/test_chat_handle_exception_streaming/client0/result.jsonlines
+index a7fcbeb5c8..d3a6b030ac 100644
+--- a/tests/snapshots/test_app/test_chat_handle_exception_streaming/client0/result.jsonlines
++++ b/tests/snapshots/test_app/test_chat_handle_exception_streaming/client0/result.jsonlines
+@@ -1,1 +1,1 @@
+-{"error": "The app encountered an error processing your request.\nIf you are an administrator of the app, view the full error in the logs. See aka.ms/appservice-logs for more information.\nError type: <class 'ZeroDivisionError'>\n"}
+\ No newline at end of file
++{"error": "The app encountered an error processing your request.\nIf you are an administrator of the app, check the application logs for a full traceback.\nError type: <class 'ZeroDivisionError'>\n"}
+\ No newline at end of file
+diff --git a/tests/snapshots/test_app/test_chat_handle_exception_streaming/client1/result.jsonlines b/tests/snapshots/test_app/test_chat_handle_exception_streaming/client1/result.jsonlines
+index a7fcbeb5c8..d3a6b030ac 100644
+--- a/tests/snapshots/test_app/test_chat_handle_exception_streaming/client1/result.jsonlines
++++ b/tests/snapshots/test_app/test_chat_handle_exception_streaming/client1/result.jsonlines
+@@ -1,1 +1,1 @@
+-{"error": "The app encountered an error processing your request.\nIf you are an administrator of the app, view the full error in the logs. See aka.ms/appservice-logs for more information.\nError type: <class 'ZeroDivisionError'>\n"}
+\ No newline at end of file
++{"error": "The app encountered an error processing your request.\nIf you are an administrator of the app, check the application logs for a full traceback.\nError type: <class 'ZeroDivisionError'>\n"}
+\ No newline at end of file
+diff --git a/tests/snapshots/test_app/test_chat_stream_handle_exception/client0/result.json b/tests/snapshots/test_app/test_chat_stream_handle_exception/client0/result.json
+index 39db6d36d8..723fe960ae 100644
+--- a/tests/snapshots/test_app/test_chat_stream_handle_exception/client0/result.json
++++ b/tests/snapshots/test_app/test_chat_stream_handle_exception/client0/result.json
+@@ -1,3 +1,3 @@
+ {
+-    "error": "The app encountered an error processing your request.\nIf you are an administrator of the app, view the full error in the logs. See aka.ms/appservice-logs for more information.\nError type: <class 'ZeroDivisionError'>\n"
++    "error": "The app encountered an error processing your request.\nIf you are an administrator of the app, check the application logs for a full traceback.\nError type: <class 'ZeroDivisionError'>\n"
+ }
+\ No newline at end of file
+diff --git a/tests/snapshots/test_app/test_chat_stream_handle_exception/client1/result.json b/tests/snapshots/test_app/test_chat_stream_handle_exception/client1/result.json
+index 39db6d36d8..723fe960ae 100644
+--- a/tests/snapshots/test_app/test_chat_stream_handle_exception/client1/result.json
++++ b/tests/snapshots/test_app/test_chat_stream_handle_exception/client1/result.json
+@@ -1,3 +1,3 @@
+ {
+-    "error": "The app encountered an error processing your request.\nIf you are an administrator of the app, view the full error in the logs. See aka.ms/appservice-logs for more information.\nError type: <class 'ZeroDivisionError'>\n"
++    "error": "The app encountered an error processing your request.\nIf you are an administrator of the app, check the application logs for a full traceback.\nError type: <class 'ZeroDivisionError'>\n"
+ }
+\ No newline at end of file
+diff --git a/tests/test_cosmosdb.py b/tests/test_cosmosdb.py
+index 6efc9b7f3a..457de68bea 100644
+--- a/tests/test_cosmosdb.py
++++ b/tests/test_cosmosdb.py
+@@ -190,7 +190,7 @@ async def mock_upsert_item(container_proxy, item, **kwargs):
+     )
+     assert response.status_code == 500
+     assert (await response.get_json()) == {
+-        "error": "The app encountered an error processing your request.\nIf you are an administrator of the app, view the full error in the logs. See aka.ms/appservice-logs for more information.\nError type: <class 'IndexError'>\n"
++        "error": "The app encountered an error processing your request.\nIf you are an administrator of the app, check the application logs for a full traceback.\nError type: <class 'IndexError'>\n"
+     }
+ 
+ 
+@@ -261,7 +261,7 @@ def mock_query_items(container_proxy, query, **kwargs):
+     )
+     assert response.status_code == 500
+     assert (await response.get_json()) == {
+-        "error": "The app encountered an error processing your request.\nIf you are an administrator of the app, view the full error in the logs. See aka.ms/appservice-logs for more information.\nError type: <class 'Exception'>\n"
++        "error": "The app encountered an error processing your request.\nIf you are an administrator of the app, check the application logs for a full traceback.\nError type: <class 'Exception'>\n"
+     }
+ 
+ 

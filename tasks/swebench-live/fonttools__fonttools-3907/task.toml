@@ -1,0 +1,30 @@
+id = "fonttools__fonttools-3907"
+image = "starryzhang/sweb.eval.x86_64.fonttools_1776_fonttools-3907"
+workdir = "/testbed"
+test_cmd = "bash .swebench_live/run.sh"
+timeout_s = 1800
+
+statement = '''
+feaLib's VariableScalar should allow float values in axis locations
+After we [let un-truncated float values in glyphsLib's Axis Location](https://github.com/googlefonts/glyphsLib/issues/1100) custom parameters (these are used to define user-space locations of masters and instances), we started getting new build failures from fonttools feaLib about "Base master not found", e.g.:
+
+https://github.com/googlefonts/glyphsLib/issues/1105
+
+The problem seems to be feaLib VariableScalar's `__repr__` as well as feaLib.parser are enforcing the axis coordinates of VariableScalars (e.g. such as those used for variable kerning or mark positioning) to be integers.
+
+We should allow them to also be floating-point values, because the fvar's user-space coordinates are defined as `Fixed` in the OT spec so may well contain fractional values, and it's best to let them optionally be floats.
+
+I'll make a PR
+'''
+
+[swebench_live]
+instance_id = "fonttools__fonttools-3907"
+repo = "fonttools/fonttools"
+pull_number = "3907"
+base_commit = "7b50bde2ee3ac6c9e1936ea8c5351ffd84e4606c"
+created_at = "2025-08-18T10:05:57"
+docker_image = "starryzhang/sweb.eval.x86_64.fonttools_1776_fonttools-3907"
+test_cmds = ["pytest -rA"]
+fail_to_pass = 2
+pass_to_pass = 4496
+image_gb_compressed = 0.689

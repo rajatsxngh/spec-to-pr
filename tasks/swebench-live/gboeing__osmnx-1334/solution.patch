@@ -1,0 +1,48 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 5a88e383a..7936e3596 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -2,6 +2,7 @@
+ 
+ ## TBD
+ 
++- handle relations with missing member geometries when loading features from XML (#1334)
+ - exclude ways tagged "rest_area" or "services" when downloading network data (#1328)
+ 
+ ## 2.0.5 (2025-07-05)
+diff --git a/docs/source/installation.rst b/docs/source/installation.rst
+index 908b96f70..f079caf60 100644
+--- a/docs/source/installation.rst
++++ b/docs/source/installation.rst
+@@ -8,9 +8,9 @@ The foolproof way to install OSMnx is with `conda`_ or `mamba`_:
+ 
+ .. code-block:: shell
+ 
+-    conda create -n ox conda-forge::osmnx
++    conda create --strict-channel-priority -c conda-forge -n ox osmnx
+ 
+-This creates a new conda environment and installs OSMnx into it, via the conda-forge channel. If you want other packages, such as :code:`jupyterlab`, installed in this environment as well, just add their names after :code:`osmnx` above. To upgrade OSMnx to a newer release, remove the conda environment you created and then create a new one again, as above. See the `conda`_ and `conda-forge`_ documentation for more details.
++This creates a new conda environment and installs OSMnx into it, via the conda-forge channel. If you want other packages, such as :code:`jupyterlab`, installed in this environment as well, just add their names after :code:`osmnx` above. To upgrade OSMnx to a newer release, remove the conda environment you created and then create a new one again, as above. See the `conda-forge`_ documentation for details.
+ 
+ Docker
+ ------
+diff --git a/osmnx/features.py b/osmnx/features.py
+index ca472816f..833cbc473 100644
+--- a/osmnx/features.py
++++ b/osmnx/features.py
+@@ -598,7 +598,14 @@ def _build_relation_geometry(
+     # sort member geometries by member role and geometry type
+     for member in members:
+         if member["type"] == "way":
+-            geom = way_geoms[member["ref"]]
++            geom = way_geoms.get(member["ref"])
++            if geom is None:
++                # a member's geometry may be missing when loaded from XML, if
++                # so, we cannot build this relation's complete geometry, so
++                # just return a null geometry to be removed at final filtering
++                msg = f"Cannot build relation geometry, missing member way {member['ref']}"
++                utils.log(msg, level=lg.WARNING)
++                return Polygon()
+             role = member["role"]
+             if role == "outer" and geom.geom_type == "LineString":
+                 outer_linestrings.append(geom)

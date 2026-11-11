@@ -276,7 +276,7 @@ def oracle_for(config: EvalConfig | None = None) -> ModelFactory:
         repro = [f for f in sorted(task.hidden.rglob("*_hidden.py"))]
         turns = []
         if planning:
-            files = "\n".join(f"- {e[1]['path']}" for e in fixes)
+            files = "\n".join(f"- {e[1].get('path', 'solution.patch')}" for e in fixes)
             tests = "\n".join(f"- {f.relative_to(task.hidden).as_posix()}" for f in repro) or "- none"
             plan = ORACLE_PLAN.format(files=files, tests=tests)
             turns.append(ScriptedTurn(tool_calls=[("submit_plan", {"plan": plan})], usage=_zero()))
@@ -300,6 +300,8 @@ def oracle_for(config: EvalConfig | None = None) -> ModelFactory:
 
 
 def _solution_edits(task: Task) -> list[tuple[str, dict]]:
+    if not task.solution.is_dir() and task.solution_patch.is_file():
+        return [_patch_call(task)]
     edits = []
     for f in sorted(p for p in task.solution.rglob("*") if p.is_file()):
         rel = f.relative_to(task.solution).as_posix()
@@ -309,9 +311,21 @@ def _solution_edits(task: Task) -> list[tuple[str, dict]]:
     return edits
 
 
+PATCH_EOF = "SPEC_TO_PR_PATCH_EOF"
+
+
+def _patch_call(task: Task) -> tuple[str, dict]:
+    """A `run` call that applies solution.patch (tasks whose repo lives in their image)."""
+    patch = task.solution_patch.read_text(encoding="utf-8")
+    patch += "" if patch.endswith("\n") else "\n"
+    return ("run", {"command": f"git apply --whitespace=nowarn - <<'{PATCH_EOF}'\n{patch}{PATCH_EOF}\n"})
+
+
 def oracle_model(task: Task) -> ModelClient:
     """Applies the task's reference solution, then finishes. Checks the pipeline end to end for free."""
     turns = []
+    if not task.solution.is_dir() and task.solution_patch.is_file():
+        turns.append(ScriptedTurn(tool_calls=[_patch_call(task)], usage=_zero()))
     for f in sorted(p for p in task.solution.rglob("*") if p.is_file()):
         rel = f.relative_to(task.solution).as_posix()
         new = f.read_text(encoding="utf-8")

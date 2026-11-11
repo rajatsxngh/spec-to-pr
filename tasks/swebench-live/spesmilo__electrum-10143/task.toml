@@ -1,0 +1,61 @@
+id = "spesmilo__electrum-10143"
+image = "starryzhang/sweb.eval.x86_64.spesmilo_1776_electrum-10143"
+workdir = "/testbed"
+test_cmd = "bash .swebench_live/run.sh"
+timeout_s = 1800
+
+statement = '''
+AssertionError: expected hex str, got <class 'str'> with len(hex_str)=88
+
+Crash Report
+============
+
+This crash report was reported through the automatic crash reporting system 🤖
+
+Traceback
+--------------
+
+```Python traceback
+Traceback (most recent call last):
+  File "app/electrum/gui/qml/qedaemon.py", line 259, in _on_backend_wallet_loaded
+  File "app/electrum/wallet.py", line 3490, in unlock
+  File "app/electrum/wallet.py", line 3145, in check_password
+  File "app/electrum/keystore.py", line 75, in wrapper
+  File "app/electrum/keystore.py", line 832, in check_password
+  File "app/electrum/keystore.py", line 737, in _get_hex_seed
+AssertionError: expected hex str, got <class 'str'> with len(hex_str)=88
+
+AssertionError: expected hex str, got <class 'str'> with len(hex_str)=88
+```
+
+Reporter
+------------
+
+This issue was reported by 2 user(s):
+
+| Electrum Version  | Python Version | Operating System  | Wallet Type  | Locale | Stack |
+|---|---|---|---|---|---|
+| 4.6.1  | 3.10.18 (main, Aug  5 2025, 14:02:23) [Clang 12.0.8 (https://android.googlesource.com/toolchain/llvm-project c935d99d7 | Android 15 on Xiaomi dipper (lineage_dipper-userdebug 15 BP1A.250505.005 074156d59f) |  | en_US | [ℹ](https://crashhub.electrum.org//crash/37532) | 
+| 4.6.1  | 3.10.18 (main, Aug  5 2025, 14:02:23) [Clang 12.0.8 (https://android.googlesource.com/toolchain/llvm-project c935d99d7 | Android 10 on vivo PD2019 (DNN-L29 3.1.1.214(C185E2R2P2)) |  | en_US | [ℹ](https://crashhub.electrum.org//crash/37670) | 
+
+
+Additional Information
+------------------------
+
+
+> Open app
+
+---
+'''
+
+[swebench_live]
+instance_id = "spesmilo__electrum-10143"
+repo = "spesmilo/electrum"
+pull_number = "10143"
+base_commit = "392400295e733e1dd3f0cb14189466e8a76890ef"
+created_at = "2025-08-16T18:08:57"
+docker_image = "starryzhang/sweb.eval.x86_64.spesmilo_1776_electrum-10143"
+test_cmds = ["LD_LIBRARY_PATH=electrum pytest tests -v -rA"]
+fail_to_pass = 1
+pass_to_pass = 850
+image_gb_compressed = 0.844

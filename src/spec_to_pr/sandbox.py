@@ -1,7 +1,8 @@
 """Sandboxes (F2): where every agent command runs.
 
 `DockerSandbox` is the real one: one container per task, repo copied in at the
-target commit, network off, CPU/memory/pid limits, and no host environment
+target commit (or, with `repo=None`, the checkout the image already holds at
+`workdir`, as SWE-bench images do), network off, CPU/memory/pid limits, and no host environment
 variables passed in (so no secrets). `LocalSandbox` runs on the host in a temp
 copy of the repo; it exists for tests and quick development only and is never
 safe for untrusted tasks.
@@ -64,15 +65,17 @@ def docker_available() -> bool:
 class DockerSandbox:
     def __init__(
         self,
-        repo: Path,
+        repo: Path | None,
         limits: SandboxLimits,
         image: str = DEFAULT_IMAGE,
         commit: str | None = None,
         network: bool = False,
+        workdir: str = WORKDIR,
     ):
         if not shutil.which("docker"):
             raise SandboxError("Docker is not installed or not on PATH.")
         self.source = repo  # host directory the sandbox was copied from (used for the repo map)
+        self.workdir = workdir
         self.name = f"spec-to-pr-{uuid.uuid4().hex[:12]}"
         cmd = [
             "docker", "run", "-d", "--rm",
@@ -80,20 +83,25 @@ class DockerSandbox:
             "--cpus", str(limits.cpus),
             "--memory", limits.memory,
             "--pids-limit", str(limits.pids),
-            "--workdir", WORKDIR,
+            "--workdir", workdir,
             # A clean environment: no -e/--env-file, so host secrets never enter.
             "--env", "HOME=/root",
             # No .pyc files: a cache compiled from the original code can outlive a same-size edit
             # made within the same second, and Python would run the stale bytecode.
             "--env", "PYTHONDONTWRITEBYTECODE=1",
+            # The network is off, so `uv run` must use the environment as installed instead of
+            # trying to re-sync (SWE-bench images built with uv would otherwise fail every test run).
+            "--env", "UV_NO_SYNC=1",
+            "--env", "UV_OFFLINE=1",
         ]
         if not network:
             cmd += ["--network", "none"]
         cmd += [image, "sleep", "infinity"]
         self._docker(cmd, "start container")
         try:
-            self._docker(["docker", "exec", self.name, "mkdir", "-p", WORKDIR], "create workdir")
-            self._docker(["docker", "cp", f"{repo.resolve()}{os.sep}.", f"{self.name}:{WORKDIR}"], "copy repo")
+            if repo is not None:
+                self._docker(["docker", "exec", self.name, "mkdir", "-p", workdir], "create workdir")
+                self._docker(["docker", "cp", f"{repo.resolve()}{os.sep}.", f"{self.name}:{workdir}"], "copy repo")
             if commit:
                 result = self.exec(f"git checkout -q {commit}", timeout_s=60)
                 if result.exit_code != 0:
@@ -110,7 +118,7 @@ class DockerSandbox:
 
     def exec(self, command: str, timeout_s: int) -> ExecResult:
         # `timeout` inside the container kills the command; the host timeout is a backstop.
-        cmd = ["docker", "exec", "-w", WORKDIR, self.name, "timeout", "-k", "5", str(timeout_s), "bash", "-lc", command]
+        cmd = ["docker", "exec", "-w", self.workdir, self.name, "timeout", "-k", "5", str(timeout_s), "bash", "-lc", command]
         try:
             proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout_s + 15)
         except subprocess.TimeoutExpired as e:
@@ -119,7 +127,7 @@ class DockerSandbox:
 
     def _path(self, path: str) -> str:
         p = PurePosixPath(path)
-        return str(p if p.is_absolute() else PurePosixPath(WORKDIR) / p)
+        return str(p if p.is_absolute() else PurePosixPath(self.workdir) / p)
 
     def read_file(self, path: str) -> str:
         proc = subprocess.run(["docker", "exec", self.name, "cat", "--", self._path(path)], capture_output=True)
