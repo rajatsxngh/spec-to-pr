@@ -3,22 +3,13 @@
 Build the image first: `uv run spec-to-pr build-image`.
 """
 
-import subprocess
-
 import pytest
 
-from conftest import PLANTED
+from conftest import PLANTED, needs_docker
 from spec_to_pr.config import SandboxLimits
-from spec_to_pr.sandbox import DEFAULT_IMAGE, DockerSandbox, docker_available
+from spec_to_pr.sandbox import DockerSandbox
 
-
-def image_exists() -> bool:
-    return subprocess.run(["docker", "image", "inspect", DEFAULT_IMAGE], capture_output=True).returncode == 0
-
-
-pytestmark = pytest.mark.skipif(
-    not (docker_available() and image_exists()), reason="Docker or the sandbox image is not available"
-)
+pytestmark = needs_docker
 
 
 @pytest.fixture

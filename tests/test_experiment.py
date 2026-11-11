@@ -1,9 +1,8 @@
 import json
-import subprocess
 
 import pytest
 
-from conftest import ROOT
+from conftest import ROOT, run_cli
 from spec_to_pr.config import SandboxLimits
 from spec_to_pr.evaluate import oracle_for
 from spec_to_pr.experiment import SpecError, cell_config, estimate, load_spec, run_experiment
@@ -107,12 +106,11 @@ def test_report_table_deltas():
 
 
 def test_cli_estimate_only():
-    out = subprocess.run(["uv", "run", "spec-to-pr", "experiment", "experiments/full.toml", "--estimate-only"],
-                         capture_output=True, text=True, cwd=ROOT).stdout
+    out = run_cli("experiment", "experiments/full.toml", "--estimate-only").stdout
     assert "450 task runs" in out and "$900.00" in out and "$150.00" in out
 
 
 def test_cli_claude_requires_yes():
-    proc = subprocess.run(["uv", "run", "spec-to-pr", "experiment", "experiments/full.toml"],
-                          capture_output=True, text=True, cwd=ROOT)
-    assert proc.returncode != 0 and "--yes" in (proc.stdout + proc.stderr)
+    proc = run_cli("experiment", "experiments/full.toml")
+    assert proc.returncode != 0
+    assert "--yes" in "".join((proc.stdout + proc.stderr).split())  # whitespace-free, in case a box still wraps
