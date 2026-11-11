@@ -287,3 +287,18 @@ def test_fetch_falls_back_to_rows_when_filter_fails(monkeypatch):
 
     got = [r["instance_id"] for r in swl.fetch_instances("2025-03-01", page=2, get=get)]
     assert got == ["i5", "i4", "i3", "i2"]  # newest first, stops at the first page older than since
+
+
+@pytest.mark.parametrize("grade_on", ["worktree", "submission"])
+def test_baseline_oracle_resolves_patch_task(fake, tmp_path, grade_on):
+    import dataclasses
+
+    from spec_to_pr.evaluate import oracle_for
+
+    repo, inst = fake
+    swl.write_task(inst, tmp_path / "set")
+    swl.write_taskset(tmp_path / "set", [inst["instance_id"]], "t")
+    cfg = dataclasses.replace(load_config(ROOT / "configs" / "baseline.toml"), grade_on=grade_on)
+    rows = run_eval(load_taskset(tmp_path / "set"), cfg, oracle_for(cfg), local_factory(repo), tmp_path / "out",
+                    workers=1, max_total_usd=0, reserve_per_task=0.0)
+    assert rows[0].resolved, rows[0].detail

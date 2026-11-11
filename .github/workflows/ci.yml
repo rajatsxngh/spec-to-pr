@@ -14,10 +14,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
-      - run: uv sync --locked --extra tracing
-      - run: uv run pytest
+      - run: uv sync --locked --extra tracing --extra report
+      # Build the image first so the Docker-sandbox tests run instead of skipping.
       - name: Build sandbox image
         run: uv run spec-to-pr build-image
+      - name: Test suite
+        run: uv run pytest
       - name: Integration checks in Docker (every task set and config, no API calls)
         run: uv run python scripts/check.py --fast
 

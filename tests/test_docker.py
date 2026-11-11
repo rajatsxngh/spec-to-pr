@@ -3,22 +3,13 @@
 Build the image first: `uv run spec-to-pr build-image`.
 """
 
-import subprocess
-
 import pytest
 
-from conftest import PLANTED
+from conftest import PLANTED, needs_docker
 from spec_to_pr.config import SandboxLimits
-from spec_to_pr.sandbox import DEFAULT_IMAGE, DockerSandbox, docker_available
+from spec_to_pr.sandbox import DockerSandbox
 
-
-def image_exists() -> bool:
-    return subprocess.run(["docker", "image", "inspect", DEFAULT_IMAGE], capture_output=True).returncode == 0
-
-
-pytestmark = pytest.mark.skipif(
-    not (docker_available() and image_exists()), reason="Docker or the sandbox image is not available"
-)
+pytestmark = needs_docker
 
 
 @pytest.fixture
@@ -60,5 +51,21 @@ def test_image_checkout_mode_copies_nothing():
         assert r.output.strip() == "/opt/checkout-in-image"
         b.write_file("x.txt", "hi")
         assert b.read_file("/opt/checkout-in-image/x.txt") == "hi"
+    finally:
+        b.close()
+
+
+def test_crlf_checkout_is_clean_in_the_container(tmp_path, monkeypatch):
+    """Git for Windows (core.autocrlf=true) checks files out with CRLF over LF blobs; the
+    container's git must not see every line as modified."""
+    from test_pr import crlf_checkout
+
+    work = crlf_checkout(tmp_path, monkeypatch)
+    b = DockerSandbox(work, SandboxLimits(command_timeout_s=60))
+    try:
+        assert b.exec("git status --porcelain", timeout_s=30).output.strip() == ""
+        b.exec("sed -i 's/mid + 1]/mid - 1]/' stats.py", timeout_s=30)
+        diff = b.exec("git diff --numstat", timeout_s=30).output.strip()
+        assert diff == "1\t1\tstats.py"
     finally:
         b.close()

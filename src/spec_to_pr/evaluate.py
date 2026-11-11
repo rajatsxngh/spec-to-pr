@@ -7,7 +7,9 @@ trajectory.
 
 from __future__ import annotations
 
+import base64
 import json
+import shlex
 import statistics
 import threading
 import time
@@ -26,6 +28,9 @@ from .tasks import Task, TaskSet, grade
 # Harness components that ablation configs switch on and off, and the milestone that builds each.
 COMPONENTS = {"verification": 3, "skills": 3, "planning": 5, "context": 6}
 BUILT: set[str] = {"verification", "skills", "planning", "context"}  # every component is built
+# Which agent a config runs: our harness, or the mini-swe-agent baseline (src/spec_to_pr/baseline.py).
+AGENTS = ("spec-to-pr", "mini-swe-agent")
+BASELINE = "mini-swe-agent"
 
 
 class ConfigError(ValueError):
@@ -37,11 +42,21 @@ class EvalConfig:
     name: str
     run: RunConfig
     components: dict[str, bool] = field(default_factory=dict)
+    agent: str = "spec-to-pr"
+    grade_on: str = "worktree"  # baseline only: worktree (as our agent) or submission (as SWE-bench)
 
 
 def load_config(path: Path) -> EvalConfig:
     raw = tomllib.loads(path.read_text(encoding="utf-8"))
     components = {k: bool(v) for k, v in raw.get("components", {}).items()}
+    agent = raw.get("agent", "spec-to-pr")
+    if agent not in AGENTS:
+        raise ConfigError(f"{path}: unknown agent {agent!r}; known: {', '.join(AGENTS)}")
+    if agent == BASELINE and any(components.values()):
+        raise ConfigError(f"{path}: harness components don't apply to the {BASELINE} baseline")
+    grade_on = raw.get("baseline", {}).get("grade_on", "worktree")
+    if grade_on not in ("worktree", "submission"):
+        raise ConfigError(f"{path}: baseline.grade_on must be worktree or submission")
     for name, on in components.items():
         if name not in COMPONENTS:
             raise ConfigError(f"{path}: unknown component {name!r}; known: {', '.join(COMPONENTS)}")
@@ -58,7 +73,8 @@ def load_config(path: Path) -> EvalConfig:
         compact_at_tokens=raw.get("compact_at_tokens", RunConfig.compact_at_tokens),
         max_review_rounds=raw.get("max_review_rounds", RunConfig.max_review_rounds),
     )
-    return EvalConfig(name=raw.get("name", path.stem), run=run, components=components)
+    return EvalConfig(name=raw.get("name", path.stem), run=run, components=components, agent=agent,
+                      grade_on=grade_on)
 
 
 @dataclass
@@ -89,7 +105,13 @@ def run_one(task: Task, run_idx: int, config: EvalConfig, make_model: ModelFacto
     try:
         sandbox = make_sandbox(task)
         run_dir = out_dir / "runs" / f"{task.id}" / f"run{run_idx}"
-        result = run_agent(task.statement, make_model(task), sandbox, config.run, run_dir)
+        if config.agent == BASELINE:
+            from .baseline import run_baseline  # needs the baseline extra
+
+            result = run_baseline(task.statement, make_model(task), sandbox, config.run, run_dir,
+                                  grade_on=config.grade_on)
+        else:
+            result = run_agent(task.statement, make_model(task), sandbox, config.run, run_dir)
         g = grade(task, sandbox)
         (run_dir / "grade.txt").write_text(g.output, encoding="utf-8")
         b = result.budget
@@ -181,6 +203,7 @@ def scoreboard(results: list[TaskRun], taskset: TaskSet, config: EvalConfig) -> 
 
     return {
         "config": config.name,
+        "agent": config.agent,
         "model": config.run.model.model,
         "components": config.components,
         "taskset": {"name": taskset.name, "version": taskset.version, "hash": taskset.content_hash},
@@ -268,6 +291,8 @@ def oracle_for(config: EvalConfig | None = None) -> ModelFactory:
     reproducing test first and passes the finish gate (verification), and approves the review. Checks
     every component and config end to end, with no API calls."""
     run = config.run if config else None
+    if config is not None and config.agent == BASELINE:
+        return baseline_oracle
 
     def make(task: Task) -> ModelClient:
         planning = bool(run and run.planning)
@@ -334,6 +359,30 @@ def oracle_model(task: Task) -> ModelClient:
         turns.append(ScriptedTurn(tool_calls=[("edit_file", {"path": rel, "old_str": old, "new_str": new})],
                                   usage=_zero()))
     turns.append(ScriptedTurn(tool_calls=[("finish", {"summary": "Applied the reference solution."})], usage=_zero()))
+    return ScriptedModel(turns)
+
+
+def baseline_oracle(task: Task) -> ModelClient:
+    """Oracle for the mini-swe-agent baseline: writes the reference solution with bash (its only tool),
+    then submits the diff with upstream's submit command."""
+    turns, paths = [], []
+    if not task.solution.is_dir() and task.solution_patch.is_file():  # repo lives in the task's image
+        from .swebench_live import patch_files
+
+        turns.append(ScriptedTurn(text="Apply the reference solution.",
+                                  tool_calls=[("bash", _patch_call(task)[1])], usage=_zero()))
+        paths = [shlex.quote(p) for p in patch_files(task.solution_patch.read_text(encoding="utf-8"))]
+    for f in sorted(p for p in task.solution.rglob("*") if p.is_file()):
+        rel = f.relative_to(task.solution).as_posix()
+        paths.append(shlex.quote(rel))
+        data = base64.b64encode(f.read_bytes()).decode("ascii")
+        cmd = f"mkdir -p \"$(dirname {shlex.quote(rel)})\" && printf %s {data} | base64 -d > {shlex.quote(rel)}"
+        turns.append(ScriptedTurn(text="Apply the reference solution.", tool_calls=[("bash", {"command": cmd})],
+                                  usage=_zero()))
+    submit = f"git add -N . && git diff -- {' '.join(paths)} > patch.txt"
+    turns.append(ScriptedTurn(text="Create the patch.", tool_calls=[("bash", {"command": submit})], usage=_zero()))
+    turns.append(ScriptedTurn(text="Submit.", tool_calls=[
+        ("bash", {"command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt"})], usage=_zero()))
     return ScriptedModel(turns)
 
 

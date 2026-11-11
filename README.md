@@ -33,6 +33,9 @@ task at every rung.
 | + Planning | `plan.md` before any edit (auto-approved in evals) |
 | + Context | Tree-sitter repo map, output trimming, compaction (the full harness) |
 
+The experiment also runs a **mini-swe-agent baseline** (the reference the harness must match or beat), shown
+as its own first column and a dashed reference line in the charts. See [Baseline](#baseline).
+
 ## How a run works
 
 ```mermaid
@@ -162,6 +165,39 @@ Each [SWE-bench Live](https://github.com/microsoft/SWE-bench-Live) instance beco
   Like the official maintainers, we suggest re-running `validate-tasks` before a big experiment, since
   upstream test suites can drift or flake.
 
+## Baseline
+
+[mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent) (pinned to 2.4.6, the `baseline` extra; the
+dev group installs it) is the SWE-bench team's minimal agent: one bash tool and a linear history.
+`configs/baseline.toml` (`agent = "mini-swe-agent"`) runs it on the same tasks, sandbox, model, budgets and
+hidden-test grading as the ablation rungs:
+
+```bash
+uv run spec-to-pr eval tasks/self --config configs/baseline.toml            # baseline alone
+uv run spec-to-pr eval tasks/self --config configs/baseline.toml --agent oracle   # pipeline check, no API
+```
+
+`src/spec_to_pr/baseline.py` runs upstream's own `DefaultAgent` with its SWE-bench prompts, observation and
+format-error templates (`config/benchmarks/swebench.yaml`), through two adapters on its documented
+protocols:
+
+- **Environment:** every command goes through our sandbox's `exec` (the same Docker container, limits and
+  no network), keeping upstream's output format, timeout message and `COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`
+  submit check.
+- **Model:** the conversation goes through our Anthropic client, so effort, prompt caching and pricing
+  match our agent. Upstream would call LiteLLM here; only the transport differs. Tool calls are parsed with
+  upstream's parser, so format errors behave the same.
+
+Our step, token, dollar and time caps are checked before every model call (upstream's own limits are set
+to the same values). Each run writes the usual `trajectory.jsonl`, reports and patch, plus upstream's own
+`mini_trajectory.json` and `submission.patch`.
+
+Differences from a stock SWE-bench run of mini-swe-agent: the prompt's `/testbed` becomes the sandbox's
+working directory; the `BASH_ENV` conda hook is dropped (our image has no conda); the command timeout is
+our sandbox's (120s, upstream 60s); and by default the working tree is graded, exactly as for our agent.
+Set `grade_on = "submission"` in `[baseline]` to grade only the submitted patch, as SWE-bench does (no
+submission counts as no change).
+
 ## Checks
 
 ```bash
@@ -169,7 +205,7 @@ uv run python scripts/check.py          # everything (about 12 minutes), no API 
 ```
 
 Runs the test suite, validates every task set, runs an oracle agent through the CLI with every ablation
-config (each must resolve 100%), runs the injection set with the full harness, checks that a no-op agent
+config and the mini-swe-agent baseline (each must resolve 100%), runs the injection set with the full harness, checks that a no-op agent
 resolves nothing, runs the experiment pipeline end to end, and loads every CLI command. CI runs it in
 Docker on every push.
 
@@ -207,6 +243,7 @@ Langfuse). Each run exports a `spec_to_pr.run` span with `chat` and `execute_too
 | `prflow.py`, `github.py` | Spec to draft PR, issue intake, fork flow, GitHub REST client |
 | `tasks.py`, `evaluate.py` | Task format and grading; parallel eval runner, scoreboard, configs |
 | `experiment.py`, `report.py` | Config × model × run matrix; ablation table and charts |
+| `baseline.py` | mini-swe-agent baseline in our sandbox, with our model client and budgets |
 | `tracing.py` | OpenTelemetry spans |
 | `tasks/`, `configs/`, `experiments/` | Task sets, ablation configs, experiment specs |
 | `scripts/check.py`, `scripts/update_readme.py` | Integration checks; README results from an experiment |

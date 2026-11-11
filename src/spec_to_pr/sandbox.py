@@ -62,6 +62,18 @@ def docker_available() -> bool:
         return False
 
 
+def host_converts_crlf(repo: Path) -> bool:
+    """True when the host's git converts line endings for this repo (core.autocrlf true/input, the
+    Git for Windows default). Its working tree then holds CRLF files over LF blobs, which a
+    container's git, without that setting, would report as modified on every line."""
+    try:
+        proc = subprocess.run(["git", "-C", str(repo), "config", "--get", "core.autocrlf"],
+                              capture_output=True, text=True, encoding="utf-8", timeout=20)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.stdout.strip().lower() in ("true", "input")
+
+
 class DockerSandbox:
     def __init__(
         self,
@@ -102,6 +114,12 @@ class DockerSandbox:
             if repo is not None:
                 self._docker(["docker", "exec", self.name, "mkdir", "-p", workdir], "create workdir")
                 self._docker(["docker", "cp", f"{repo.resolve()}{os.sep}.", f"{self.name}:{workdir}"], "copy repo")
+                if host_converts_crlf(repo):
+                    # `input` compares CRLF files to their LF blobs as unchanged and never writes CRLF,
+                    # so diffs show only the agent's edits, with LF endings like the committed blobs.
+                    # safecrlf=false drops the per-file "CRLF will be replaced" warnings from git output.
+                    self.exec("git rev-parse --is-inside-work-tree >/dev/null 2>&1 && "
+                              "git config core.autocrlf input && git config core.safecrlf false", timeout_s=30)
             if commit:
                 result = self.exec(f"git checkout -q {commit}", timeout_s=60)
                 if result.exit_code != 0:

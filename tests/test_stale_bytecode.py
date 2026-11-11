@@ -8,10 +8,10 @@ experiment smoke check in Docker on inj-001-readme (`5 / 9` -> `9 / 5`).
 
 import pytest
 
-from conftest import ROOT
+from conftest import ROOT, needs_docker
 from spec_to_pr.agent import _ensure_git_baseline
 from spec_to_pr.config import SandboxLimits
-from spec_to_pr.sandbox import DockerSandbox, LocalSandbox, docker_available
+from spec_to_pr.sandbox import DockerSandbox, LocalSandbox
 from spec_to_pr.tasks import grade, load_taskset, overlay
 from spec_to_pr.tools import Toolbox
 from spec_to_pr.verification import Verifier
@@ -22,8 +22,7 @@ assert TASK.id == "inj-001-readme"
 
 def sandboxes():
     yield pytest.param(lambda: LocalSandbox(TASK.repo, SandboxLimits()), id="local")
-    yield pytest.param(lambda: DockerSandbox(TASK.repo, SandboxLimits()), id="docker",
-                       marks=pytest.mark.skipif(not docker_available(), reason="Docker not available"))
+    yield pytest.param(lambda: DockerSandbox(TASK.repo, SandboxLimits()), id="docker", marks=needs_docker)
 
 
 @pytest.mark.parametrize("make", list(sandboxes()))

@@ -72,7 +72,7 @@ def test_spec_to_draft_pr(repo, tmp_path):
     assert (call["owner"], call["repo"]) == ("acme", "demo")
     assert call["title"] == "Fix median for even-length lists"
     body = call["body"]
-    for part in ("## Spec", "median([4, 1, 3, 2])", "stats.py", "New tests fail without the change: yes",
+    for part in ("## Spec", "median([4, 1, 3, 2])", "```\n stats.py ", "New tests fail without the change: yes",
                  "Tests pass with the change: yes", "Reviewer verdict: **approve**", "Test-weakening flags: none",
                  "## Cost", "never merged automatically"):
         assert part in body, part
@@ -187,3 +187,35 @@ def test_rest_client_reports_errors():
         lambda r: httpx.Response(422, json={"message": "Validation Failed"})))
     with pytest.raises(GitHubError, match="422"):
         gh.create_draft_pr("a", "b", head="h", base="main", title="t", body="b")
+
+
+def crlf_checkout(tmp_path, monkeypatch):
+    """A repo as Git for Windows checks it out: LF blobs, CRLF files in the working tree, and
+    core.autocrlf=true set system-wide (here via the environment), not in the repo's .git/config.
+    Its origin is a local path, not GitHub."""
+    src, work = tmp_path / "src", tmp_path / "crlf"
+    shutil.copytree(PLANTED, src)
+    git(src, "init", "-q", "-b", "main")
+    git(src, "config", "core.autocrlf", "false")
+    git(src, "add", "-A")
+    git(src, "-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "-qm", "initial")
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.autocrlf")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "true")
+    git(tmp_path, "clone", "-q", str(src), str(work))
+    git(work, "config", "user.name", "Test User")
+    git(work, "config", "user.email", "test@example.com")
+    return work
+
+
+def test_crlf_checkout_gets_a_minimal_lf_branch(tmp_path, monkeypatch):
+    work = crlf_checkout(tmp_path, monkeypatch)
+    assert b"\r\n" in (work / "stats.py").read_bytes()
+    outcome = run_spec(SPEC, work, CONFIG, fixing_model(), local, None, tmp_path / "run")
+
+    assert outcome.status == "branch_created", outcome.reason
+    stat = git(work, "diff", "--numstat", "main", outcome.branch)
+    assert sorted(stat.splitlines()) == ["1\t1\tstats.py", "5\t0\ttest_even.py"]  # no whole-file rewrites
+    blob = subprocess.run(["git", "show", f"{outcome.branch}:stats.py"], cwd=work, capture_output=True).stdout
+    assert b"ordered[mid - 1]" in blob and b"\r\n" not in blob  # committed with LF, like the original
+    assert git(work, "status", "--porcelain") == ""
