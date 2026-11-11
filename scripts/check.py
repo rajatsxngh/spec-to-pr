@@ -1,7 +1,8 @@
 """Integration checks, run after every milestone: `uv run python scripts/check.py`.
 
 Runs the test suite, validates every task set, runs the oracle agent through the real CLI with every
-ablation config, runs the injection set with the full harness, runs a no-op eval, and checks the CLI.
+ablation config and the mini-swe-agent baseline, runs the injection set with the full harness, runs a no-op
+eval, and checks the CLI.
 Scoreboards are read back so the numbers are checked, not just exit codes. No API calls; Docker is
 used when available, else the local sandbox.
 
@@ -19,7 +20,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIGS = ["bare", "verification", "skills", "planning", "context"]
+CONFIGS = ["baseline", "bare", "verification", "skills", "planning", "context"]
 COMMANDS = ["solve", "run", "eval", "experiment", "validate-tasks", "build-image"]
 
 
@@ -105,12 +106,12 @@ def main() -> int:
         cells = json.loads(results_file.read_text(encoding="utf-8"))["cells"]
         report_dir = results_file.parent
         charts = all((report_dir / f).exists() for f in ("report.md", "ablation.png", "cost_quality.png"))
-        ok = len(cells) == 10 and all(c["resolve_rate_mean"] == 1.0 for c in cells) and charts
+        ok = len(cells) == 12 and all(c["resolve_rate_mean"] == 1.0 for c in cells) and charts
         detail = f"{sum(c['resolve_rate_mean'] == 1.0 for c in cells)}/{len(cells)} cells at 100%, " \
                  f"report and charts {'written' if charts else 'MISSING'}"
     else:
         print(proc.stdout[-2000:], proc.stderr[-2000:])
-    record("experiment smoke (5 configs x 2 models)", ok, detail, t0)
+    record("experiment smoke (baseline + 5 configs x 2 models)", ok, detail, t0)
 
     # The experiment's output feeds the README updater (run on a copy of the README).
     t0 = time.monotonic()
@@ -126,7 +127,7 @@ def main() -> int:
         try:
             mod.update(results_file.parent, readme, tmp / "docs" / "img", allow_oracle=True)
             text = readme.read_text(encoding="utf-8")
-            ok = "| + Context |" in text and (tmp / "docs" / "img" / "ablation.png").exists()
+            ok = "| + Context |" in text and "| mini-swe-agent |" in text and (tmp / "docs" / "img" / "ablation.png").exists()
             detail = "results section and charts written" if ok else "results section incomplete"
         except SystemExit as e:
             detail = f"updater failed: {e}"
