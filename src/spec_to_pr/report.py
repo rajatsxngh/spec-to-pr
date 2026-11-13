@@ -95,7 +95,10 @@ def report_markdown(boards: list[dict], configs: list[str], models: list[str], t
     task_runs = sum(b["task_runs"] for b in boards)
     tsets = {f"{b['taskset']['name']} {b['taskset']['version']} ({b['taskset']['hash']})" for b in boards}
     lines += ["", f"Total: {task_runs} task runs, ${total:.2f}. Task set: {', '.join(sorted(tsets))}.", ""]
-    if any(b["skipped"] for b in boards):
+    if any(b.get("skipped_account_error") for b in boards):
+        lines.append("Some task runs were skipped because the API account failed (no credit or a bad key); they are "
+                     "left out of the rates, and those cells are incomplete and rerun next time.\n")
+    if any(b["skipped"] - b.get("skipped_account_error", 0) for b in boards):
         lines.append("Some task runs were skipped by the spend cap; those cells are incomplete and rerun next time.\n")
     return "\n".join(lines)
 
@@ -235,7 +238,11 @@ def readme_results(boards: list[dict], configs: list[str], models: list[str], ch
     by = {(b["config"], b["model"]): b for b in boards}
     h = headline(boards, configs, models)
     lines = []
-    if h["best_component"]:
+    if h["best_component"] and h["best_gain_pts"] <= 0:
+        lines.append("No component raised the resolve rate over the rung before it in this run; "
+                     "the components added cost only.")
+        lines.append("")
+    elif h["best_component"]:
         lines.append(f"**{_rung(h['best_component']).lstrip('+ ')}** was the most valuable component: "
                      f"{h['best_gain_pts']:+.1f} points of resolve rate on average across models.")
         lines.append("")
@@ -243,17 +250,26 @@ def readme_results(boards: list[dict], configs: list[str], models: list[str], ch
         lines.append(f"- {m}: {_pct(v['bare'])} → {_pct(v['full'])} resolved, bare loop to full harness; "
                      f"cost per resolved task {_usd(v['bare_cpr'])} → {_usd(v['full_cpr'])}"
                      + (f"; mini-swe-agent baseline {_pct(v['baseline'])} at {_usd(v['baseline_cpr'])}."
-                        if "baseline" in v else "."))
+                        if "baseline" in v else ".")
+                     + (" Some of this model's cells are incomplete (see the table), so this is not a like-for-like "
+                        "comparison." if any(b.get("skipped") for b in boards if b["model"] == m) else ""))
     lines += ["", "| Rung | " + " | ".join(models) + " |", "| --- | " + " | ".join("---" for _ in models) + " |"]
     for c in configs:
         cells = []
         for m in models:
             b = by.get((c, m))
-            cells.append(f"{_pct(b['resolve_rate_mean'])} · {_usd(b['cost_per_resolved_usd'])}" if b else "not run")
+            cell = f"{_pct(b['resolve_rate_mean'])} · {_usd(b['cost_per_resolved_usd'])}" if b else "not run"
+            if b and b.get("skipped"):
+                cell += f" (incomplete: {b['task_runs']} of {b['task_runs'] + b['skipped']} runs)"
+            cells.append(cell)
         lines.append(f"| {_rung(c)} | " + " | ".join(cells) + " |")
     runs = max((b.get("runs", 0) for b in boards), default=0)
     tsets = sorted({f"{b['taskset']['name']} {b['taskset']['version']}" for b in boards})
-    lines += ["", f"Each cell: resolve rate · cost per resolved task, mean of {runs} run(s) on {', '.join(tsets)}.", "",
+    lines += ["", f"Each cell: resolve rate · cost per resolved task, mean of {runs} run(s) on {', '.join(tsets)}."]
+    if any(b.get("skipped") for b in boards):
+        lines.append("Incomplete cells lost runs to the spend cap or an API account error; "
+                     "their rates cover only the runs that happened.")
+    lines += ["",
               f"![Resolve rate by rung]({chart_dir}/ablation.png)", "",
               f"![Cost versus quality]({chart_dir}/cost_quality.png)"]
     return "\n".join(lines)

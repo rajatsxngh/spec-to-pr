@@ -1,6 +1,6 @@
 # I built the test before the agent
 
-_Draft for week 2. Fill the [bracketed] numbers from `make eval` and the baseline run before posting._
+_Draft for week 2. Numbers are from the SWE-bench Live pilot (`docs/reports/swebench-pilot/report.md`)._
 
 Week 2 of building Spec-to-PR, a coding agent that turns a written spec into a tested draft pull request.
 I haven't made the agent smart yet. I spent the week on the thing that tells me whether it is.
@@ -21,8 +21,8 @@ So before adding a single feature, I built a harness to measure features.
   still fits. A typo in a config can't cost me $500.
 - A scoreboard: resolve rate, **cost per resolved task** (my headline metric), time, steps and tokens.
 
-**First numbers.** The bare agent loop resolves [X/10] at [$Y] per resolved task. The minimal baseline,
-mini-swe-agent, resolves [X/10] at [$Y].
+**First numbers.** The bare agent loop resolves 13/20 real bugs from SWE-bench Live at $0.11 per resolved task (Sonnet 5.5, one run each). The minimal baseline,
+mini-swe-agent, resolves 11/20 at $0.10.
 
 Next up: making the agent prove its own fixes. More soon.
 

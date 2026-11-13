@@ -47,4 +47,5 @@ if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     if len(args) != 1:
         raise SystemExit(__doc__)
+    sys.stdout.reconfigure(encoding="utf-8")  # the section has arrows; Windows consoles default to cp1252
     print(update(Path(args[0]), ROOT / "README.md", ROOT / "docs" / "img", allow_oracle="--allow-oracle" in sys.argv))

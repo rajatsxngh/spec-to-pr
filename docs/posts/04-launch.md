@@ -16,8 +16,8 @@ spec or point it at a GitHub issue, and it opens a tested draft pull request.
    context checks the diff.
 5. A draft PR opens with the spec, plan, test evidence, review verdict and cost: [$X] for this one.
 
-**What I measured:** [one-line headline from the ablation post, e.g. "+verification was worth +X points;
-the full harness took Haiku from A% to B%"].
+**What I measured:** on a pilot of 20 real bugs from SWE-bench Live, the bare loop solved 65% against 55% for
+mini-swe-agent at the same cost; verification, skills and planning added cost and did not solve more.
 
 **What I learned building it:**
 

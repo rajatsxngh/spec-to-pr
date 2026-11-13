@@ -16,14 +16,46 @@ reviewer's verdict, integrity flags and the cost.
 ## Results
 
 <!-- results:start -->
-_No experiment results yet. Run `make experiment` (Docker and a Claude API key needed; capped at $150), then
-`uv run --extra report python scripts/update_readme.py results/experiment-full-claude` to fill this section
-with the ablation table and charts._
+No component raised the resolve rate over the rung before it in this run; the components added cost only.
+
+- claude-sonnet-5-5: 65% → 50% resolved, bare loop to full harness; cost per resolved task $0.106 → $0.365; mini-swe-agent baseline 55% at $0.104. Some of this model's cells are incomplete (see the table), so this is not a like-for-like comparison.
+
+| Rung | claude-sonnet-5-5 |
+| --- | --- |
+| mini-swe-agent | 55% · $0.104 |
+| Bare loop | 65% · $0.106 |
+| + Verification | 65% · $0.171 |
+| + Skills | 65% · $0.179 |
+| + Planning | 60% · $0.231 |
+| + Context | 50% · $0.365 (incomplete: 14 of 20 runs) |
+
+Each cell: resolve rate · cost per resolved task, mean of 1 run(s) on swebench-live swebench-live-v1.
+Incomplete cells lost runs to the spend cap or an API account error; their rates cover only the runs that happened.
+
+![Resolve rate by rung](docs/img/ablation.png)
+
+![Cost versus quality](docs/img/cost_quality.png)
 <!-- results:end -->
 
-The experiment turns each harness component on one at a time (the ablation ladder below) for three models,
-three runs each, on a self-written task set with hidden tests, and reports resolve rate and cost per resolved
-task at every rung.
+These numbers are a **pilot**, not the full experiment: 20 real bugs from
+[SWE-bench Live](#swe-bench-live-tasks), one model (Sonnet 5.5), one run each, $12.41 in total. What it supports:
+
+- The bare loop solved more bugs than the mini-swe-agent baseline (13 against 11 of 20) at the same cost per
+  solved bug.
+- Verification, skills and planning each raised the cost and did not solve more bugs. With one run per bug, a
+  5-point difference is a single bug, so the pilot cannot tell a small effect from noise.
+- 6 of the 20 bugs were not solved by any setup, so this task set has room to separate setups. The 10
+  self-written tasks do not: every setup and every model solved all of them (540 runs, $13.51; see
+  `docs/reports/full/report.md`).
+- The + Context row is incomplete. The API account ran out of credit during that cell and 6 of its 20 runs
+  never produced a result. On the 14 bugs it did run, it solved 7; the bare loop solved 8 of the same 14.
+
+Not run yet: the full grid on SWE-bench Live (three models, three runs each, `experiments/swebench.toml`).
+The experiment runner resumes, so `spec-to-pr experiment experiments/swebench-pilot.toml --yes` finishes the
+incomplete cell first.
+
+The experiment turns each harness component on one at a time (the ablation ladder below) and reports resolve
+rate and cost per resolved task at every rung.
 
 | Rung | Adds |
 | --- | --- |
@@ -247,12 +279,15 @@ Langfuse). Each run exports a `spec_to_pr.run` span with `chat` and `execute_too
 | `tracing.py` | OpenTelemetry spans |
 | `tasks/`, `configs/`, `experiments/` | Task sets, ablation configs, experiment specs |
 | `scripts/check.py`, `scripts/update_readme.py` | Integration checks; README results from an experiment |
+| `scripts/rescore_experiment.py` | Rebuild an experiment's report from saved runs, no API calls |
 | `docs/` | Launch posts, demo script, dogfood guide |
 
 ## Status
 
 All eight milestones are built and pass the integration checks with scripted models, including in the
-Docker sandbox. Not done yet: the real experiment run, the demo recording and the dogfood PRs.
+Docker sandbox. Real runs so far: the self-written tasks on three models and a SWE-bench Live pilot on one
+(see [Results](#results)). Not done yet: the full SWE-bench Live grid, the demo recording and the dogfood PRs;
+each needs Claude API credit.
 
 ## License
 

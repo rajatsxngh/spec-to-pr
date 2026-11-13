@@ -2,6 +2,11 @@
 
 _Draft for week 6. Fill the [bracketed] numbers from the +planning vs +context cells of the experiment._
 
+_**Do not post yet.** The pilot does not support this headline. On SWE-bench Live (Sonnet 5.5, one run each)
+the + Context cell cost more per resolved task than + Planning ($0.365 against $0.231) and solved no more
+bugs, and it is incomplete: 6 of its 20 runs were lost when the API credit ran out. Rerun that cell, and
+ideally the full grid, then either fill the numbers or rewrite the post around what the data shows._
+
 Coding agents get expensive in a boring way: every step resends the whole conversation, so a 40-step task
 pays for step 1's file dump 40 times. This week I added context engineering to Spec-to-PR and measured it.
 

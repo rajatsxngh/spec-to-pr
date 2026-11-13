@@ -81,7 +81,7 @@ def load_config(path: Path) -> EvalConfig:
 class TaskRun:
     task_id: str
     run: int
-    status: str  # agent status, or "skipped_spend_cap" / "harness_error"
+    status: str  # agent status, or "skipped_spend_cap" / "skipped_account_error" / "harness_error"
     resolved: bool
     cost_usd: float = 0.0
     steps: int = 0
@@ -93,6 +93,25 @@ class TaskRun:
     verified: bool | None = None  # None when verification is off
     review: str | None = None  # last reviewer verdict
     integrity_ok: bool = True  # False when a planted instruction was followed (N3)
+
+
+# API failures that say nothing about the task: no credit, a bad or revoked key. A run that hits one is
+# skipped (not counted as unresolved) and the eval stops scheduling, since every later run would fail too.
+ACCOUNT_ERROR_MARKERS = (
+    "credit balance is too low",
+    "AuthenticationError",
+    "PermissionDeniedError",
+    "invalid x-api-key",
+)
+SKIPPED_ACCOUNT = "skipped_account_error"
+
+
+def is_account_error(detail: str) -> bool:
+    return any(m in detail for m in ACCOUNT_ERROR_MARKERS)
+
+
+def is_skipped(tr: "TaskRun") -> bool:
+    return tr.status.startswith("skipped_")
 
 
 ModelFactory = Callable[[Task], ModelClient]
@@ -112,9 +131,12 @@ def run_one(task: Task, run_idx: int, config: EvalConfig, make_model: ModelFacto
                                   grade_on=config.grade_on)
         else:
             result = run_agent(task.statement, make_model(task), sandbox, config.run, run_dir)
+        b = result.budget
+        if result.status == "error" and is_account_error(result.detail):
+            return TaskRun(task.id, run_idx, SKIPPED_ACCOUNT, False, b["cost_usd"], b["steps"], b["tokens"],
+                           b["elapsed_s"], result.models_used, result.detail)
         g = grade(task, sandbox)
         (run_dir / "grade.txt").write_text(g.output, encoding="utf-8")
-        b = result.budget
         return TaskRun(task.id, run_idx, result.status, g.resolved, b["cost_usd"], b["steps"], b["tokens"],
                        b["elapsed_s"], result.models_used, result.detail, result.weakening_flags,
                        (result.verification or {}).get("verified") if config.run.verification else None,
@@ -148,6 +170,7 @@ def run_eval(
     out_dir.mkdir(parents=True, exist_ok=True)
     results: list[TaskRun] = []
     spent = 0.0
+    account_error = ""  # set once a run hits an account error: nothing new starts after that
     lock = threading.Lock()
     log = (out_dir / "results.jsonl").open("a", encoding="utf-8")
 
@@ -163,6 +186,10 @@ def run_eval(
             running: dict[Future, tuple[Task, int]] = {}
             queue = list(jobs)
             while queue or running:
+                if account_error and queue:
+                    for task, r in queue:
+                        record(TaskRun(task.id, r, SKIPPED_ACCOUNT, False, detail=f"not started: {account_error}"))
+                    queue.clear()
                 while queue and len(running) < workers and spent + (len(running) + 1) * per_task <= max_total_usd:
                     task, r = queue.pop(0)
                     fut = pool.submit(run_one, task, r, config, make_model, make_sandbox, out_dir)
@@ -179,6 +206,8 @@ def run_eval(
                     tr = fut.result()
                     with lock:
                         spent += tr.cost_usd
+                    if tr.status == SKIPPED_ACCOUNT:
+                        account_error = account_error or tr.detail[:300]
                     record(tr)
     finally:
         log.close()
@@ -190,13 +219,13 @@ def run_eval(
 
 
 def scoreboard(results: list[TaskRun], taskset: TaskSet, config: EvalConfig) -> dict[str, Any]:
-    attempted = [r for r in results if r.status != "skipped_spend_cap"]
+    attempted = [r for r in results if not is_skipped(r)]
     by_run: dict[int, list[TaskRun]] = {}
     for r in attempted:
         by_run.setdefault(r.run, []).append(r)
     rates = [sum(x.resolved for x in rs) / len(rs) for _, rs in sorted(by_run.items())]
     resolved = sum(r.resolved for r in attempted)
-    cost = sum(r.cost_usd for r in attempted)
+    cost = sum(r.cost_usd for r in results)  # skipped runs can still have spent money before the error
 
     def mean(values: list[float]) -> float:
         return round(statistics.fmean(values), 3) if values else 0.0
@@ -210,6 +239,7 @@ def scoreboard(results: list[TaskRun], taskset: TaskSet, config: EvalConfig) -> 
         "runs": len(by_run),
         "task_runs": len(attempted),
         "skipped": len(results) - len(attempted),
+        "skipped_account_error": sum(r.status == SKIPPED_ACCOUNT for r in results),
         "harness_errors": sum(r.status == "harness_error" for r in attempted),
         "resolved": resolved,
         "resolve_rate_mean": mean(rates),
@@ -253,7 +283,7 @@ def scoreboard_markdown(sb: dict[str, Any]) -> str:
         f"| Mean tokens | {sb['mean_tokens']:,.0f} |",
         f"| Test-weakening flagged | {sb['test_weakening_flagged']} (resolved anyway: {sb['flagged_but_resolved']}) |",
         f"| Planted instructions followed | {sb['integrity_failures']} |",
-        f"| Skipped (spend cap) | {sb['skipped']} |",
+        f"| Skipped (spend cap or account error) | {sb['skipped']} |",
         f"| Harness errors | {sb['harness_errors']} |",
         "",
         "| Task | Resolved |",

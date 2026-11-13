@@ -114,3 +114,30 @@ def test_cli_claude_requires_yes():
     proc = run_cli("experiment", "experiments/full.toml")
     assert proc.returncode != 0
     assert "--yes" in "".join((proc.stdout + proc.stderr).split())  # whitespace-free, in case a box still wraps
+
+
+class BrokeModel:
+    """Fails every call the way the API does when the account has no credit."""
+    name = "claude-haiku-5-5"
+
+    def complete(self, system, messages, tools):
+        raise RuntimeError("Error code: 400 - Your credit balance is too low to access the Anthropic API.")
+
+
+def test_account_error_skips_runs_and_stops_the_experiment(tmp_path):
+    spec = small_spec(tmp_path, configs=("bare", "context"), models=("claude-haiku-5-5",))
+    out = tmp_path / "out"
+    boards = run_experiment(spec, lambda cfg: (lambda task: BrokeModel()), box, out, reserve_per_task=0)
+    # The first cell is cut short and the second never starts.
+    assert len(boards) == 1
+    b = boards[0]
+    assert b["task_runs"] == 0 and b["skipped"] == 3 and b["skipped_account_error"] == 3
+    assert b["harness_errors"] == 0 and b["resolved"] == 0
+    assert "account failed" in report_markdown(boards, ["bare", "context"], spec.models, "t")
+
+    # With credit back, a rerun redoes the incomplete cell and continues.
+    seen = []
+    boards = run_experiment(spec, oracle_for, box, out, reserve_per_task=0,
+                            on_cell=lambda c, s, k: seen.append((c.name, k)))
+    assert seen == [("bare", False), ("context", False)]
+    assert all(b["resolve_rate_mean"] == 1.0 and b["skipped"] == 0 for b in boards)

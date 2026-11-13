@@ -130,6 +130,8 @@ def run_experiment(
             if on_cell:
                 on_cell(cfg, sb, False)
         boards.append(sb)
+        if sb.get("skipped_account_error"):
+            break  # no credit or a bad key: every later cell would fail the same way; rerun to resume
 
     (out / "results.json").write_text(json.dumps({"spec": _spec_dict(spec), "cells": boards}, indent=2),
                                       encoding="utf-8")

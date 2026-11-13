@@ -1,0 +1,25 @@
+# The full experiment on the 20 SWE-bench Live tasks: the mini-swe-agent baseline and every ablation rung
+# x three models x 3 runs. Fresh real-world tasks, so the most credible numbers; bigger repos, so more
+# tokens per task than tasks/self. The cap stops it before the worst case.
+name = "swebench"
+tasks = "tasks/swebench-live"
+runs = 3
+workers = 4
+max_total_usd = 150.0
+
+# Ladder order: each rung adds one component to the rung before it.
+configs = [
+  "configs/baseline.toml",  # mini-swe-agent: the reference column, not a rung
+  "configs/bare.toml",
+  "configs/verification.toml",
+  "configs/skills.toml",
+  "configs/planning.toml",
+  "configs/context.toml",
+]
+
+# Cheap to frontier. Which models to compare is still an open question in the PRD.
+models = [
+  "claude-haiku-5-5",
+  "claude-sonnet-5-5",
+  "claude-opus-5-5",
+]

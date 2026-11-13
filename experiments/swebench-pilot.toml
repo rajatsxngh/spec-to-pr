@@ -1,0 +1,21 @@
+# Step 2: a pilot on the 20 SWE-bench Live tasks to measure real cost and difficulty before the full grid.
+# Every config, one model (Sonnet), one run each: 6 configs x 20 tasks = 120 task runs.
+name = "swebench-pilot"
+tasks = "tasks/swebench-live"
+runs = 1
+workers = 4
+max_total_usd = 60.0
+
+# Ladder order: each rung adds one component to the rung before it.
+configs = [
+  "configs/baseline.toml",  # mini-swe-agent: the reference column, not a rung
+  "configs/bare.toml",
+  "configs/verification.toml",
+  "configs/skills.toml",
+  "configs/planning.toml",
+  "configs/context.toml",
+]
+
+models = [
+  "claude-sonnet-5-5",
+]

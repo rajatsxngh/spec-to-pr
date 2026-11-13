@@ -302,7 +302,7 @@ def experiment_cmd(
     def progress(cfg, sb, cached):
         state = "cached" if cached else "done"
         typer.echo(f"  [{state}] {cfg.name} × {cfg.run.model.model}: {sb['resolve_rate_mean']:.0%} resolved, "
-                   f"${sb['total_cost_usd']:.2f}" + (f", {sb['skipped']} skipped by the cap" if sb["skipped"] else ""))
+                   f"${sb['total_cost_usd']:.2f}" + (f", {sb['skipped']} skipped (cap or account error)" if sb["skipped"] else ""))
 
     boards = run_experiment(spec, make_model, _sandbox_factory(sandbox, image, SandboxLimits()), out_dir,
                             reserve_per_task=reserve, on_cell=progress)
