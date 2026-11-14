@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Optional
@@ -423,6 +424,34 @@ def build_image(tag: str = typer.Option(DEFAULT_IMAGE)) -> None:
     """Build the default sandbox image (Python, git, ripgrep, pytest)."""
     proc = subprocess.run(["docker", "build", "-t", tag, "-f", str(DOCKERFILE), str(DOCKERFILE.parent)])
     raise typer.Exit(proc.returncode)
+
+
+@app.command()
+def replay(
+    run_dir: Path = typer.Argument(..., exists=True, help="A run directory (holds trajectory.jsonl)."),
+    speed: float = typer.Option(1.0, help="Playback speed; 2 is twice as fast."),
+    no_delay: bool = typer.Option(False, "--no-delay", help="Print everything at once."),
+    max_lines: int = typer.Option(12, help="Lines of each command's output to show."),
+) -> None:
+    """Replay a recorded run step by step. Needs no API key, Docker or network."""
+    import os
+    import time
+
+    from .replay import ReplayError, frames
+
+    if speed <= 0:
+        raise typer.BadParameter("must be above 0", param_hint="--speed")
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    color = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+    try:
+        for pause, text in frames(run_dir, max_lines=max_lines, color=color):
+            if not no_delay:
+                time.sleep(pause / speed)
+            typer.echo(text + "\n", color=color)
+    except ReplayError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(2) from None
 
 
 def main() -> None:

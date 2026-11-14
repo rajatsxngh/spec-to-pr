@@ -1,0 +1,56 @@
+diff --git a/osmnx/features.py b/osmnx/features.py
+index ca472816..ad047fbd 100644
+--- a/osmnx/features.py
++++ b/osmnx/features.py
+@@ -598,6 +598,11 @@ def _build_relation_geometry(
+     # sort member geometries by member role and geometry type
+     for member in members:
+         if member["type"] == "way":
++            if member["ref"] not in way_geoms:
++                # member way is missing from the response (incomplete relation)
++                msg = f"Skipping member way {member['ref']} missing from response"
++                utils.log(msg, level=lg.WARNING)
++                continue
+             geom = way_geoms[member["ref"]]
+             role = member["role"]
+             if role == "outer" and geom.geom_type == "LineString":
+diff --git a/tests/input_data/incomplete_multipolygon.osm b/tests/input_data/incomplete_multipolygon.osm
+new file mode 100644
+index 00000000..d9b2d8c4
+--- /dev/null
++++ b/tests/input_data/incomplete_multipolygon.osm
+@@ -0,0 +1,19 @@
++<?xml version='1.0' encoding='UTF-8'?>
++<osm version="0.6" generator="test">
++	<node id="1" version="1" lat="48.0" lon="10.0"/>
++	<node id="2" version="1" lat="48.0" lon="10.001"/>
++	<node id="3" version="1" lat="48.001" lon="10.001"/>
++	<way id="10" version="1">
++		<nd ref="1"/>
++		<nd ref="2"/>
++		<nd ref="3"/>
++		<nd ref="1"/>
++		<tag k="building" v="yes"/>
++	</way>
++	<relation id="100" version="1">
++		<member type="way" ref="10" role="outer"/>
++		<member type="way" ref="99999" role="outer"/>
++		<tag k="type" v="multipolygon"/>
++		<tag k="landuse" v="forest"/>
++	</relation>
++</osm>
+diff --git a/tests/test_osmnx.py b/tests/test_osmnx.py
+index f32e358c..500deb5d 100755
+--- a/tests/test_osmnx.py
++++ b/tests/test_osmnx.py
+@@ -736,6 +736,10 @@ def test_features() -> None:
+     # features_from_xml - tests error handling of clipped XMLs with incomplete geometry
+     gdf = ox.features_from_xml("tests/input_data/planet_10.068,48.135_10.071,48.137.osm")
+ 
++    # features_from_xml - relation with a member way missing from the XML
++    gdf = ox.features_from_xml("tests/input_data/incomplete_multipolygon.osm")
++    assert len(gdf) == 2
++
+     # test loading a geodataframe from a local .osm xml file
+     with bz2.BZ2File("tests/input_data/West-Oakland.osm.bz2") as f:
+         handle, temp_filename = tempfile.mkstemp(suffix=".osm")

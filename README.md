@@ -111,6 +111,19 @@ flowchart LR
     EV[Eval runner and experiment] --> O
 ```
 
+## Watch a run without an API key
+
+```bash
+uv sync
+uv run spec-to-pr replay examples/replay/osmnx-1334
+```
+
+This plays back a recorded run step by step: the full harness on Sonnet 5.5 fixing a real bug in
+[OSMnx](https://github.com/gboeing/osmnx) (SWE-bench Live `gboeing__osmnx-1334`). You see the plan, the
+failing test, the fix, the finish-gate proof, the reviewer's verdict and the patch, in 15 steps for $0.11.
+It needs no API key, Docker or network. `--speed 3` plays faster and `--no-delay` prints it all at once.
+Any run directory works: `spec-to-pr replay runs/<timestamp>`.
+
 ## Quick start
 
 ```bash
@@ -140,6 +153,7 @@ PR against `origin`. `--auto-approve` skips the plan prompt; `--no-planning` ski
 | `spec-to-pr validate-tasks TASKS` | Each task fails on the original code and passes with its reference fix |
 | `spec-to-pr import-swebench-live` | Imports recent SWE-bench Live instances as tasks, keeping only those that validate |
 | `spec-to-pr build-image` | Builds the sandbox image |
+| `spec-to-pr replay RUN_DIR` | Plays a recorded run back step by step; no API key or Docker needed |
 
 Every run writes `runs/<timestamp>/` with `trajectory.jsonl` (every model and tool call with tokens and
 cost), `report.md`, `report.json`, `patch.diff`, and `plan.md` / `pr.md` when they apply.

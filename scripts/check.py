@@ -21,7 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIGS = ["baseline", "bare", "verification", "skills", "planning", "context"]
-COMMANDS = ["solve", "run", "eval", "experiment", "validate-tasks", "import-swebench-live", "build-image"]
+COMMANDS = ["solve", "run", "eval", "experiment", "validate-tasks", "import-swebench-live", "build-image", "replay"]
 
 
 def docker_ready() -> bool:
